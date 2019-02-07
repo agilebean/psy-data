@@ -8,20 +8,22 @@
 # clear the workspace
 rm(list=ls())
 
-# mode <- "new"
-mode <- "old"
+mode <- "new"
+# mode <- "old"
+# mode <- "report.single"
+# mode <- "report.all"
+
+dataset.label <- paste0(c("data/dataset", "rds"), collapse = ".")
 
 # select target and features
-# target.label <- "PERF07"
-target.label <- "PERF.all"
+# target.label <- "PERF.all"
+# target.label <- "PERF09"
 
-dataset.label <- paste0(c("data/dataset", target.label, "rds"), collapse = ".")
+# features.set <- "big5items"
+# features.set <- "big5composites"
 
-features.set <- "big5items"
-# features.set <- "big5composite"
-
-# devtools::install_github("agilebean/machinelearningtools", force = TRUE)
 # load libraries
+# devtools::install_github("agilebean/machinelearningtools", force = TRUE)
 libraries <- c("dplyr", "magrittr", "tidyverse", "purrr"
                , "sjlabelled" # read SPSS
                , "caret", "doParallel"
@@ -31,6 +33,46 @@ libraries <- c("dplyr", "magrittr", "tidyverse", "purrr"
 )
 sapply(libraries, require, character.only = TRUE)
 
+target.label.list <- c("PERF09", "PERF.all")
+features.set.list <- c("big5items", "big5composites")
+
+model.permutations.list <- crossing(target_label = target.label.list, 
+                                    features_set = features.set.list)
+
+if (mode == "report.single") {
+  
+  output.filename <- paste0(c("psy-data-analysis", 
+                              target.label, features.set, "pdf"),
+                            collapse = "-") %>% 
+    gsub("-pdf", ".pdf", .) %>% print
+  
+  rmarkdown::render(input = "psy-data-analysis.Rmd",
+                    params = list(target.label = target.label,
+                                  target.label = features.set),
+                    output_file = output.filename)
+  
+} else if (mode == "report.all") {
+  
+  target.label.list <- c("PERF09", "PERF.all")
+  features.set.list <- c("big5items", "big5composites")
+  
+  input.list <- crossing(target_label = target.label.list, 
+                         features_set = features.set.list)
+  
+  render_report <- function(target_label, features_set) {
+    
+    output.filename <- paste("psy-test", target_label, features_set, "pdf", sep = ".")
+    
+    rmarkdown::render(input = "psy-data-analysis.Rmd",
+                      params = list(target.label = target_label,
+                                    features.set = features_set),
+                      output_file = output.filename)
+  }
+  
+  input.list %>% pmap_chr(render_report)
+}
+
+
 # nominal <- FALSE # with ordinal as ORDERED factors
 nominal <- TRUE # with ordinal as NOMINAL factor
 
@@ -39,225 +81,160 @@ seed <- 17
 #######################################################################
 # 1. Data Acquistion
 #######################################################################
-## START failed import methods ##
-#
-# file.raw <- rio::import(filename)
-# file.raw <- spss.get(filename, use.value.labels = TRUE)
-# file.raw <- foreign::read.spss(filename, to.data.frame = TRUE) %T>% glimpse
-#
-## END failed import methods ##
+dataset <- readRDS(dataset.label) %T>% print
 
-filename <- "data/Personality-Performance-Turnover-Chaehan So.sav"
+#######################################################################
+# 2. Data Preparation
+#######################################################################
+########################################
+## 2.1 Data Inspection
+########################################
+dataset %>% glimpse
 
-file.raw <- sjlabelled::read_spss(filename, 
-                                  atomic.to.fac = TRUE,
-                                  verbose = FALSE) 
+########################################
+## 2.2 Data Cleaning
+########################################
 
-data.labels <- foreign::read.spss(filename) %>% 
-  attributes %>% 
-  .$variable.labels %T>% print
+# remove turnover items except "TO.all"
+dataset %<>% select(-matches("^TO[0-9]{2}$"))  %T>% print
 
-file.raw %<>%
-  dplyr::select(-id, -prinum, -TESTDATE) %>% 
-  tbl_df 
-
-################################################################################
-# 2: Data Preparation
-################################################################################
-if (nominal) {
+if (mode=="modify") {
+  if (features.set == "big5items") {
+    
+    dataset %<>% 
+      # remove composite scores - equivalent to (-nn, -ee, -oo, -aa, -cc)
+      select(-matches("(oo|cc|ee|aa|nn)$")) 
+    
+  } else if (features.set == "big5composites") {
+    
+    dataset %<>% 
+      # remove Big5 items
+      select(-matches(".*(1|2|3|4|5|6)"))
+  }
   
-  # data.raw <- sjlabelled::copy_labels(data.raw, df_origin = file.raw)
-  # file.raw %>% str
+  dataset %>% print
   
-  ## tricky: either mutate+one_of(column_labels) OR mutate_at+column_labels
-  data.raw <- file.raw %>%
-    # convert categorical variables to factors
-    mutate_at((c("COMNAME", "team_id", "class", "job", "gender", "educa")),
-              as.factor) %>%
-    # convert numerical variables to numeric datatype
-    mutate_at(vars(starts_with("TO")), as.numeric) %>% 
-    # fix import error for PERF07
-    mutate_at("PERF07", as.numeric) %T>% print
-  # leave Big5 items' datatype to numeric bec. they are already converted
-  
-  # dataset %>% str
-  # dataset %>% glimpse
-  
-} else { # factors treated as ordinal
-  
+  if (target.label == "PERF09") {
+    
+    dataset %<>% 
+      # select(-matches("^PERF0[8|9]$")) %>% 
+      select(-PERF.all, -TO.all) %T>% print
+    
+  } else if (target.label == "PERF.all") {
+    
+    dataset %<>% select(-matches("^PERF[0-9]{2}$"))
+  }  
 }
 
-################################################################################
-# 2.1: Data Inspection
-################################################################################
+
 
 ################################################################################
-### 2.1.1 Data Structure
-################################################################################
-data.raw %>% glimpse
-dataset %>% dim # n=1621
-data.raw$LIFE_S_R %>% as.factor %>% levels
-data.raw$JOB_S_R %>% as.factor %>% levels
-
-################################################################################
-### 2.1.2 Histograms
-################################################################################
-# data.raw %>% plot_histogram(nrow = 9, ncol = 6)
-
-################################################################################
-### 2.1.3 Missing Values
-################################################################################
-# visualize missing values
-data.raw %>% DataExplorer::plot_missing() 
-
-## find any rows containing NAs
-dataset %>% filter_all(any_vars(is.na(.))) # n=1430
-
-## find all rows without any NA = complete.cases
-dataset %>% na.omit %>% dim # n=191
-dataset %>% .[complete.cases(.),]
-
-## find all NA-columns
-## tricky: not intuitive
-# dataset %>% select_if(~sum(is.na(.)) > 0) #  n=1621, cols=14
-# dataset %>% Filter(function(x) !(all(x=="")), .) #  n=1621, cols=57
-
-# find columms with most NAs
-## count NAs per columns
-na.columns <- data.raw %>% 
-  # find any columns with NAs
-  select_if(function(x) any(is.na(x))) %>% 
-  # sum NAs for each column
-  summarise_all(funs(sum(is.na(.)))) 
-
-## rank top NA columns
-na.sorted <- na.columns %>% 
-  t %>% as.data.frame %>% # was matrix
-  tibble::rownames_to_column() %>% 
-  rename(NA.count = V1) %>% 
-  arrange(desc(NA.count)) %T>% print
-
-################################################################################
-## 2.2 Data Cleaning
-### Goal: Define a datasets with least # of NAs
-### Set target = mean performance score ("PERF.all")
-################################################################################
-
-################################################################################
-### 2.2.1 Prune dataset 
-################################################################################
-data.pruned <- data.raw %>% 
-  # remove top NA columns
-  select(-JOB_S_R, # 1027 NAs
-         -howlong, #  910 NAs
-         -PERF11,  #  502 NAs
-         -PERF10,  #  431 NAs
-         -job,     #  342 NAs
-         # -PERF09,  #  331 NAs
-         # -PERF07, # 309 NAs
-         -TO07,    #  288 NAs
-         -class,   #  272 NAs +(904-713)
-         -team_id, #  238 NAs +(1053-904)
-         # -PERF08,  #  198 NAs +(1202-1053)
-         -LIFE_S_R#  107 NAs +(1288-1202)
-  ) %>% 
-  # create mean performance & turnover score
-  mutate(PERF.all = rowMeans(select(., starts_with("PERF")) ) ) %>%
-  mutate(TO.all = rowMeans(select(., starts_with("TO")) ) ) %T>% print 
-
-################################################################################
-### 2.2.2 Clean dataset
-################################################################################
-# final check NAs
-dataset %>% filter_all(any_vars(is.na(.))) # n(NA)=333
-data.pruned %>% nrow
-## final removal of NA rows
-dataset <- data.pruned %>% drop_na %T>% { print(nrow(.)) }
-
-################################################################################
-# 2-3: Select the target & features
-################################################################################
-dataset %>% names
-dataset %>% dim
-
-target.label
-features <- dataset %>% 
-  select(-target.label,
-         -starts_with("PERF"),
-         -starts_with("TO"),
-         # -"LIFE_S_R", -"JOB_S_R"
-  ) %>% 
-  names %T>% print
-
-################################################################################
-# 2-3: Split the data
-################################################################################
-# shuffle data
-set.seed(seed)
-shuffle.index <- dataset %>% nrow %>% sample
-dataset %<>% .[shuffle.index,] %T>% print
-# short version:
-# dataset %<>% nrow %>% sample %>% dataset[.,] %T>% print
-
-# later: imputation of NAs
-# dataset %>% preProcess(method="knnImpute") %>% print
-
-# dataset subsetting for tibble: [[
-training.index <- createDataPartition(dataset[[target.label]], p = .75, list = FALSE)
-testing.set <- dataset[-training.index, ]
-training.set <- dataset[training.index, ]
-
-################################################################################
-# PART 3: Train Model
+# 3. Train Model
 # 3-1: Select a model
 # 3-2: Select the target, features, training data
 # 3-3: Train the model with the target and features
 ################################################################################
-# 3-1: Select a model: 
-algorithm.list <- c(
-  "lm",
-  "knn",
-  "gbm",
-  "rf",
-  "ranger",
-  "xgbTree",
-  "xgbLinear",
-  "svmLinear",
-  "svmRadial"
-)
-
-formula1 <- features %>% 
-  paste(collapse = " + ") %>% 
-  paste(target.label, "~", .) %>% 
-  as.formula %T>% print
-
-models.list.name <- paste0(c("data/models.list", target.label, "rds"), 
-                           collapse = ".") %T>% print
 
 if (mode == "new") {
   
   cluster.new <- clusterOn()
   
+  # set.seed(seed)
   set.seed(seed)
   
-  training_configuration <- trainControl(method = "repeatedcv",
+  training.configuration <- trainControl(method = "repeatedcv", 
                                          number = 10, repeats = 3)
   
-  models.list <- list()
+  train_model_permutations <- function(target_label, features_set) {
+    
+    ########################################
+    ## 2.3 Select the target & features
+    ########################################
+    target_label %>% print
+    features_set %>% print
+    
+    ########################################
+    ## 2.4 Split the data
+    ########################################
+    set.seed(seed)
+    # shuffle data - short version:
+    dataset %<>% nrow %>% sample %>% dataset[.,] %T>% print
+    
+    # later: imputation of NAs
+    # dataset %>% preProcess(method="knnImpute") %>% print
+    
+    
+    # dataset subsetting for tibble: [[
+    set.seed(seed)
+    training.index <- createDataPartition(dataset[[target_label]], p = .80, list = FALSE)
+    testing.set <- dataset[-training.index, ]
+    training.set <- dataset[training.index, ]
+    
+    # define models.list name
+    models.list.name <- paste0(c("data/models.list", target_label, features_set, "rds"), 
+                               collapse = ".") %T>% print
+    # define features
+    features <- dataset %>% 
+      select(-target_label,
+             -starts_with("TO"),
+             -starts_with("PERF")
+      ) %>% 
+      {
+        if (features_set == "big5items") {
+          # remove composite scores - equivalent to (-nn, -ee, -oo, -aa, -cc)
+          select(., -matches("(oo|cc|ee|aa|nn)$")) 
+          
+        } else if (features_set == "big5composites") {
+          # remove Big5 items
+          select(., -matches(".*(1|2|3|4|5|6)"))
+          
+        } else { . }
+      } %>% 
+      names %T>% print
+    
+    
+    # define formula
+    formula1 <- features %>% 
+      paste(collapse = " + ") %>% 
+      paste(target_label, "~", .) %>% 
+      as.formula %T>% print
+    
+    models.list <- list()
+    
+    ########################################
+    # 3-1: Select a model
+    ########################################
+    algorithm.list <- c(
+      "lm"
+      , "knn"
+      , "gbm"
+      , "rf"
+      , "ranger"
+      , "xgbTree"
+      , "xgbLinear"
+      , "svmLinear"
+      , "svmRadial"
+    )
+    
+    system.time(
+      models.list <- algorithm.list %>% 
+        map(function(algorithm_label) {
+          train(formula1
+                , method = algorithm_label
+                , data = training.set[,]
+                , preProcess = c("center", "scale")
+                , trControl = training.configuration
+          )
+        }) %>% 
+        setNames(algorithm.list)
+    )
+    
+    models.list %>% saveRDS(models.list.name)
+    models.list %>% resamples %>% dotplot
+    
+  }
   
-  system.time(
-    models.list <- algorithm.list %>% 
-      lapply(function(algorithm_label) {
-        train(formula1
-              , method = algorithm_label
-              , data = training.set
-              # apply preProcess within cross-validation folds
-              , preProcess = c("center", "scale")
-              , trControl = training_configuration
-        )
-      }) %>% 
-      setNames(algorithm.list)
-  )
+  model.permutations.list %>% pmap(train_model_permutations)
   
 } else if (mode == "old") {
   
@@ -265,15 +242,60 @@ if (mode == "new") {
   models.list %>% resamples %>% dotplot
   
 }
+
 stopCluster(cluster.new)
 
 ################################################################################
-# Training Set Performance:
-# list mean + sd for all model metrics
+# 4. Evaluate Models
 ################################################################################
+
+get_models_list <- function(permutation_list, model_index) {
+  
+  permutation <- permutation_list %>% map_df(model_index) %>% print
+  
+  models.list.name <- paste0(c("data/models.list", permutation$target_label, 
+                               permutation$features_set, "rds"), 
+                             collapse = ".") %T>% print
+  
+  models.list  <- readRDS(models.list.name)
+  
+  return(models.list)
+}
+
+########################################
+## 4.1 Training Set Performance
+########################################
+mode <- "old"
+
+target_label <- "PERF.all"
+features_set  <-  "big5items"
+features_set  <-  "big5composites"
+
+features <- dataset %>% 
+  select(-target_label,
+         -starts_with("TO"),
+         -starts_with("PERF")
+  ) %>% 
+  {
+    if (features_set == "big5items") {
+      # remove composite scores - equivalent to (-nn, -ee, -oo, -aa, -cc)
+      select(., -matches("(oo|cc|ee|aa|nn)$")) 
+      
+    } else if (features_set == "big5composites") {
+      # remove Big5 items
+      select(., -matches(".*(1|2|3|4|5|6)"))
+      
+    } else { . }
+  } %>% 
+  names %T>% print
+
+
+# get model
+models.list <- get_models_list(model.permutations.list, 2)
+
 # training set performance
 models.metrics <- models.list %>% get_model_metrics %T>% print
-# models.list %>% saveRDS(models.list.name)
+if (mode == "new") { models.list %>% saveRDS(models.list.name) }
 
 # set color palettes (default = "Set1")
 # models.list %>% get_model_metrics(palette = "Set2")
@@ -283,21 +305,23 @@ models.list %>% get_model_metrics(palette = "Dark2")
 models.list %>% resamples %>% dotplot
 # models.list %>% resamples %>% bwplot
 
-##########################################################
-## Performance - testingset
-##########################################################
+########################################
+## 4.2 Testing Set Performance
+########################################
+
 # RMSE for all models on testing set
 models.list %>% get_model_metrics
 
 models.list %>% get_model_metrics %>% .$Rsquared.training %>% kable
 
-models.list %>% 
-  get_model_metrics(target.label, testing.set) %>% 
-  .$RMSE.testing
 
-models.list %>% 
-  get_model_metrics(target.label, testing.set) %>% 
-  .$RMSE.all
+models.list %>%
+  get_model_metrics(params$target.label, testing.set) %>%
+  .$RMSE.testing %>% kable(caption = "testing set performance: RMSE")
+
+models.list %>%
+  get_model_metrics(params$target.label, testing.set) %>%
+  .$RMSE.all %>% kable(caption = "training vs. testing set performance: RMSE")
 
 ################################################################################
 ################################################################################
@@ -307,39 +331,39 @@ models.list %>%
 #
 ################################################################################
 ################################################################################
-ggplot(data = testing.set, aes(x = PERF.all)) +
-  geom_bar()
 
-training.set$PERF.all %>% summary
-testing.set$PERF.all %>% summary
+# ggplot(data = testing.set, aes(x = PERF.all)) + geom_bar()
+# 
+# training.set$PERF.all %>% summary
+# testing.set$PERF.all %>% summary
+# 
+# # testing set performance with lm
+# predictions.best <- predict(models.list$lm, testing.set, na.action = na.pass)
+# rmse.best.testing <- sqrt(mean((predictions.best- testing.set[[target.label]])^2)) %>% print
+# rmse.best.training <- models.lists.all[[3]] %>% .$lm %>% .$results %>% .$RMSE %>% print
 
-# testing set performance with lm
-predictions.best <- predict(models.list$lm, testing.set, na.action = na.pass)
-rmse.best.testing <- sqrt(mean((predictions.best- testing.set[[target.label]])^2)) %>% print
-rmse.best.training <- models.lists.all[[3]] %>% .$lm %>% .$results %>% .$RMSE %>% print
 
-
-################################################################################
-# Compare preProcess outside/inside train()
-################################################################################
-## Compare preProcess outside/inside train()
-# models.list.name <- "data/models.lists.3.PERF.all.rds"
-# models.lists.all <- models.list.name %>% readRDS
-# models.list <- models.lists.all[[3]]
-
-if (models.list.name == "data/models.lists.3.PERF.all.rds") {
-  models.lists.all <- "data/models.lists.3.PERF.all.rds" %>% readRDS
-  
-  ## models 1: preProcess outside train() 10-fold cv
-  models.lists.all[[1]]$result
-  
-  ## models 2: preProcess inside train(), 10-fold cv
-  models.lists.all[[2]]$result
-  
-  ## models 3: preProcess inside train(), 10-fold repeated cv
-  models.lists.all[[3]]$result
-  
-}
+# ################################################################################
+# # Compare preProcess outside/inside train()
+# ################################################################################
+# ## Compare preProcess outside/inside train()
+# # models.list.name <- "data/models.lists.3.PERF.all.rds"
+# # models.lists.all <- models.list.name %>% readRDS
+# # models.list <- models.lists.all[[3]]
+# 
+# if (models.list.name == "data/models.lists.3.PERF.all.rds") {
+#   models.lists.all <- "data/models.lists.3.PERF.all.rds" %>% readRDS
+#   
+#   ## models 1: preProcess outside train() 10-fold cv
+#   models.lists.all[[1]]$result
+#   
+#   ## models 2: preProcess inside train(), 10-fold cv
+#   models.lists.all[[2]]$result
+#   
+#   ## models 3: preProcess inside train(), 10-fold repeated cv
+#   models.lists.all[[3]]$result
+#   
+# }
 
 ################################################################################
 # RMSE > MSE
@@ -389,5 +413,6 @@ models.MSE %>% select(-`NA's`) %>% t %>% as.data.frame %>%
   geom_boxplot() +
   # coord_flip() +
   xlab("model")
+
 
 
