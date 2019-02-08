@@ -79,54 +79,9 @@ nominal <- TRUE # with ordinal as NOMINAL factor
 seed <- 17
 
 #######################################################################
-# 1. Data Acquistion
+# 1. Data Acquistion - includes 2.2 Data Cleaning
 #######################################################################
 dataset <- readRDS(dataset.label) %T>% print
-
-#######################################################################
-# 2. Data Preparation
-#######################################################################
-########################################
-## 2.1 Data Inspection
-########################################
-dataset %>% glimpse
-
-########################################
-## 2.2 Data Cleaning
-########################################
-
-# remove turnover items except "TO.all"
-dataset %<>% select(-matches("^TO[0-9]{2}$"))  %T>% print
-
-if (mode=="modify") {
-  if (features.set == "big5items") {
-    
-    dataset %<>% 
-      # remove composite scores - equivalent to (-nn, -ee, -oo, -aa, -cc)
-      select(-matches("(oo|cc|ee|aa|nn)$")) 
-    
-  } else if (features.set == "big5composites") {
-    
-    dataset %<>% 
-      # remove Big5 items
-      select(-matches(".*(1|2|3|4|5|6)"))
-  }
-  
-  dataset %>% print
-  
-  if (target.label == "PERF09") {
-    
-    dataset %<>% 
-      # select(-matches("^PERF0[8|9]$")) %>% 
-      select(-PERF.all, -TO.all) %T>% print
-    
-  } else if (target.label == "PERF.all") {
-    
-    dataset %<>% select(-matches("^PERF[0-9]{2}$"))
-  }  
-}
-
-
 
 ################################################################################
 # 3. Train Model
@@ -134,12 +89,10 @@ if (mode=="modify") {
 # 3-2: Select the target, features, training data
 # 3-3: Train the model with the target and features
 ################################################################################
-
 if (mode == "new") {
   
   cluster.new <- clusterOn()
   
-  # set.seed(seed)
   set.seed(seed)
   
   training.configuration <- trainControl(method = "repeatedcv", 
@@ -156,13 +109,9 @@ if (mode == "new") {
     ########################################
     ## 2.4 Split the data
     ########################################
-    set.seed(seed)
     # shuffle data - short version:
+    set.seed(seed)
     dataset %<>% nrow %>% sample %>% dataset[.,] %T>% print
-    
-    # later: imputation of NAs
-    # dataset %>% preProcess(method="knnImpute") %>% print
-    
     
     # dataset subsetting for tibble: [[
     set.seed(seed)
@@ -192,7 +141,6 @@ if (mode == "new") {
       } %>% 
       names %T>% print
     
-    
     # define formula
     formula1 <- features %>% 
       paste(collapse = " + ") %>% 
@@ -202,10 +150,11 @@ if (mode == "new") {
     models.list <- list()
     
     ########################################
-    # 3-1: Select a model
+    # 3.1: Select a model
     ########################################
     algorithm.list <- c(
       "lm"
+      ,"glm"
       , "knn"
       , "gbm"
       , "rf"
@@ -229,21 +178,30 @@ if (mode == "new") {
         setNames(algorithm.list)
     )
     
-    models.list %>% saveRDS(models.list.name)
-    models.list %>% resamples %>% dotplot
+    models.list$target <- target_label
+    models.list$testing.set <- testing.set
     
+    models.list %>% head(-2) %>% resamples %>% dotplot
+    
+    models.list %>% saveRDS(models.list.name)
+    return(models.list)
   }
   
-  model.permutations.list %>% pmap(train_model_permutations)
+  result <- model.permutations.list %>% pmap(train_model_permutations)
   
-} else if (mode == "old") {
-  
-  models.list <- readRDS(models.list.name)
-  models.list %>% resamples %>% dotplot
-  
+  } else if (mode == "old") {
+      
+      models.list <- readRDS(models.list.name)
+      models.list %>% head(-2) %>% resamples %>% dotplot
+      
 }
 
 stopCluster(cluster.new)
+
+# models.list <- result[[2]]
+# models.list %>% resamples %>% str
+# models.list %>% head(-2) %>% resamples %>% dotplot
+
 
 ################################################################################
 # 4. Evaluate Models
@@ -262,40 +220,107 @@ get_models_list <- function(permutation_list, model_index) {
   return(models.list)
 }
 
+get_model_metrics <- function(model_list,
+                              target_label = NULL,
+                              testing_set = NULL,
+                              palette = "Set1", direction = 1,
+                              colors = NULL,
+                              boxplot_color = "grey95") {
+  require(dplyr)
+  require(purrr)
+  require(ggplot2)
+  require(RColorBrewer)
+  
+  transpose_table <- function(metric_table, metric, desc = FALSE) {
+    
+    suffix <- paste0("~", metric)
+    
+    # TODO: use dynamic name in dplyr - quosures don't workµ %>%
+    # mean <- paste0(metric,".training")
+    
+    metric_table %>%
+      dplyr::select(ends_with(suffix)) %>%
+      rename_all(funs(gsub(suffix, "", .))) %>%
+      t %>% as.data.frame %>%
+      rename(mean = V1, sd = V2) %>%
+      round(digits = 3) %>%
+      rownames_to_column(var = "model") %>%
+      arrange( {if (desc) desc(mean) else mean } )
+    
+  }
+  
+  ### get metrics from original resamples' folds
+  resamples.values <- model_list %>% head(-2) %>% resamples %>% .$values %>%
+    select_if(is.numeric) %>%
+    # retrieve RMSE, Rsquared but not MAE
+    ## tricky: select without dplyr:: prefix does NOT work
+    dplyr::select(ends_with("RMSE"), ends_with("Rsquared"))
+  
+  ### calculate mean and sd for each metric
+  metric_table <- resamples.values %>%
+    map_df(function(variable) {
+      ## tricky: dplyr::mutate doesn't work here
+      c(mean = mean(variable), sd = sd(variable))
+    })
+  
+  RMSE.training <- metric_table %>% transpose_table("RMSE")
+  
+  Rsquared.training <- metric_table %>% transpose_table("Rsquared", desc = TRUE)
+  
+  ### visualize the resampling distribution from cross-validation
+  resamples.boxplots <-
+    resamples.values %>%
+    dplyr::select(ends_with("~RMSE")) %>%
+    set_names(~gsub("~RMSE","",.)) %>%
+    drop_na() %>%
+    gather(key = model, value = RMSE) %>%
+    ggplot(aes(x = reorder(model, RMSE, median), y = RMSE, color = model)) +
+    theme_minimal() +
+    geom_boxplot(width = 0.7, fill=boxplot_color) +
+    geom_jitter() +
+    coord_flip() +
+    labs(x = "model") +
+    theme(legend.position = "none", # removes all legends
+          axis.title = element_text(size = 14),
+          axis.text = element_text(size = 14)) +
+    scale_color_brewer(palette = palette, direction = direction)
+  
+  if (!is.null(colors)) {
+    resamples.boxplots <-
+      resamples.boxplots +
+      scale_color_manual(values = colors)
+  }
+  
+  # RMSE for all models on testing set
+  if (!is.null(target_label) & !is.null(testing_set))
+  {
+    RMSE.testing <- get_rmse_testing(target_label, model_list, testing_set)
+    benchmark.all <- merge(RMSE.training, RMSE.testing, by = "model") %>%
+      mutate(delta = mean - RMSE.testing) %>%
+      arrange(RMSE.testing)
+    
+  } else {
+    RMSE.testing <- "n/a due to missing target label & testing set"
+    benchmark.all <- "n/a due to missing target label & testing set"
+  }
+  
+  
+  return(list(RMSE.training = RMSE.training,
+              Rsquared.training = Rsquared.training,
+              RMSE.testing = RMSE.testing,
+              RMSE.all = benchmark.all,
+              RMSE.boxplots = resamples.boxplots
+  ))
+}
+
 ########################################
 ## 4.1 Training Set Performance
 ########################################
-mode <- "old"
-
-target_label <- "PERF.all"
-features_set  <-  "big5items"
-features_set  <-  "big5composites"
-
-features <- dataset %>% 
-  select(-target_label,
-         -starts_with("TO"),
-         -starts_with("PERF")
-  ) %>% 
-  {
-    if (features_set == "big5items") {
-      # remove composite scores - equivalent to (-nn, -ee, -oo, -aa, -cc)
-      select(., -matches("(oo|cc|ee|aa|nn)$")) 
-      
-    } else if (features_set == "big5composites") {
-      # remove Big5 items
-      select(., -matches(".*(1|2|3|4|5|6)"))
-      
-    } else { . }
-  } %>% 
-  names %T>% print
-
-
 # get model
 models.list <- get_models_list(model.permutations.list, 2)
 
 # training set performance
 models.metrics <- models.list %>% get_model_metrics %T>% print
-if (mode == "new") { models.list %>% saveRDS(models.list.name) }
 
 # set color palettes (default = "Set1")
 # models.list %>% get_model_metrics(palette = "Set2")
@@ -310,11 +335,6 @@ models.list %>% resamples %>% dotplot
 ########################################
 
 # RMSE for all models on testing set
-models.list %>% get_model_metrics
-
-models.list %>% get_model_metrics %>% .$Rsquared.training %>% kable
-
-
 models.list %>%
   get_model_metrics(params$target.label, testing.set) %>%
   .$RMSE.testing %>% kable(caption = "testing set performance: RMSE")
