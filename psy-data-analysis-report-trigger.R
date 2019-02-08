@@ -38,7 +38,7 @@ if (mode == "report.single") {
   
 } else if (mode == "report.all") {
   
-  target.label.list <- c("PERF09", "PERF.all")
+  target.label.list <- c("PERF09", "PERF.all", "TO.all")
   features.set.list <- c("big5items", "big5composites")
   
   model.permutations.list <- crossing(target.label = target.label.list, 
