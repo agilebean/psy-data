@@ -8,16 +8,14 @@
 # clear the workspace
 rm(list=ls())
 
-mode <- "new"
-# mode <- "old"
-# mode <- "report.single"
-# mode <- "report.all"
+# mode <- "new"
+mode <- "old"
 
 dataset.label <- paste0(c("data/dataset", "rds"), collapse = ".")
 
 # load libraries
 # devtools::install_github("agilebean/machinelearningtools", force = TRUE)
-libraries <- c("dplyr", "magrittr", "tidyverse",
+libraries <- c("dplyr", "magrittr", "tidyverse"
                , "sjlabelled" # read SPSS
                , "caret", "doParallel"
                , "stargazer", "DataExplorer", "skimr"
@@ -142,14 +140,14 @@ dataset <- readRDS(dataset.label) %T>% print
 algorithm.list <- c(
   "lm"
   ,"glm"
-  # , "knn"
-  # , "gbm"
-  # , "rf"
-  # , "ranger"
-  # , "xgbTree"
-  # , "xgbLinear"
-  # , "svmLinear"
-  # , "svmRadial"
+  , "knn"
+  , "gbm"
+  , "rf"
+  , "ranger"
+  , "xgbTree"
+  , "xgbLinear"
+  , "svmLinear"
+  , "svmRadial"
 )
 
 
@@ -188,7 +186,7 @@ if (mode == "new") {
 ## 4.1 Training Set Performance
 ########################################
 # get model
-models.list <- get_models_list(model.permutations.list, 4)
+models.list <- get_models_list(model.permutations.list, 5)
 
 # training set performance
 models.metrics <- models.list %>% get_model_metrics %T>% print
@@ -217,9 +215,69 @@ models.metrics$RMSE.all
 ################################################################################
 ################################################################################
 
-
-
-
-
-
+################################################################################
+#
+# LESSONS LEARNED
+#
+################################################################################
+#
+################################################################################
+# 1. tidyr::crossing > creates permutations without factor conversion like base::expand.grid
+#
+# model.permutations.list <- crossing(target_label = target.label.list,
+#                                     features_set = features.set.list)
+#
+################################################################################
+# 2. unified handling: conditional inline ggplot statements
+#
+#   dataset %>% 
+#   {
+#     if (conditions1) {
+#       select(., -matches("(oo|cc|ee|aa|nn)$")) 
+#       
+#     } else if (condition2") {
+#       select(., -matches(".*(1|2|3|4|5|6)"))
+#       
+#     } else { . }
+#   } %>% ...
+#
+################################################################################
+# 3. quick prototyping: parametrized training set size
+#
+#   main_function(..., try_first = NULL) {
+#     train(..., 
+#           data = if (is.null(try_first)) training.set else head(training.set, try_first),
+#           ...) 
+#   }
+#
+################################################################################
+# 4. unified handling: add testing set to model to calculate testing set performance
+#
+# during training:
+#   models.list$target.label <- target_label
+#   models.list$testing.set <- testing.set
+#
+# after training:
+#   get_model_metrics(target_label = NULL,
+#                     testing_set = NULL, ...) {
+#     target.label <- if (!is.null(target_label)) target_label else models_list$target.label
+#     testing.set <- if (!is.null(testing_set)) testing_set else models_list$testing.set
+#     
+#     RMSE.testing <- get_rmse_testing(target.label, models.list, testing.set)
+#   }
+#
+# for resamples() must remove these 2 parameters:
+#   models.list %>% head(-2) %>% resamples
+#
+################################################################################
+# 5. quick prototyping: set comma before parameter in list
+# algorithm.list <- c(
+#   "lm"
+#   ,"glm"
+#   # , "knn"
+# )
+# stop cluster if exists
+# if (nrow(showConnections()) != 0) stopCluster(cluster.new) 
+#
+################################################################################
 
