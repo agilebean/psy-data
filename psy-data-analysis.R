@@ -29,8 +29,8 @@ sapply(libraries, require, character.only = TRUE)
 target.label.list <- c("PERF09", "PERF.all")
 features.set.list <- c("big5items", "big5composites")
 
-model.permutations.list <- crossing(target_label = target.label.list, 
-                                    features_set = features.set.list)
+model.permutations.list <- crossing(target.label = target.label.list, 
+                                    features.set = features.set.list)
 
 # nominal <- FALSE # with ordinal as ORDERED factors
 nominal <- TRUE # with ordinal as NOMINAL factor
@@ -64,10 +64,14 @@ get_features <- function(target_label, features_set, data_set) {
 #######################################################################
 # TRAIN model permutations
 #######################################################################
-train_model_permutations <- function(target_label, features_set, 
+train_model_permutations <- function(target.label, features.set, 
                                      data_set, algorithm_list, training_configuration, 
                                      seed = 17, split_ratio = 0.80, try_first = NULL
                                      ) {
+  # emphasize variables are passed arguments
+  target_label <- target.label
+  features_set <- features.set
+  
   # define output filename
   models.list.name <- paste0(c("data/models.list", target_label, features_set, "rds"), 
                              collapse = ".") %T>% print
@@ -98,10 +102,7 @@ train_model_permutations <- function(target_label, features_set,
   features <- get_features(target_label, features_set, data_set)
 
   # define formula
-  formula1 <- features %>% 
-    paste(collapse = " + ") %>% 
-    paste(target_label, "~", .) %>% 
-    as.formula %T>% print
+  formula1 <- set_formula(target_label, features)
 
   ########################################
   # 3.3: Train the models
@@ -134,8 +135,6 @@ train_model_permutations <- function(target_label, features_set,
   return(models.list)
 }
 
-
-
 #######################################################################
 # 1. Data Acquistion - includes 2.2 Data Cleaning
 #######################################################################
@@ -147,16 +146,19 @@ dataset <- readRDS(dataset.label) %T>% print
 algorithm.list <- c(
   "lm"
   ,"glm"
-  , "knn"
-  , "gbm"
-  , "rf"
-  , "ranger"
-  , "xgbTree"
-  , "xgbLinear"
-  , "svmLinear"
-  , "svmRadial"
+  # , "knn"
+  # , "gbm"
+  # , "rf"
+  # , "ranger"
+  # , "xgbTree"
+  # , "xgbLinear"
+  # , "svmLinear"
+  # , "svmRadial"
 )
 
+#######################################################################
+# MAIN
+#######################################################################
 if (mode == "new") {
   
   cluster.new <- clusterOn()
@@ -167,7 +169,7 @@ if (mode == "new") {
            data_set = dataset,
            algorithm_list = algorithm.list,
            training_configuration = trainControl(method = "repeatedcv", number = 10, repeats = 3), 
-           try_first = NULL
+           try_first = 50
       )
   ) %>% print
 
@@ -178,13 +180,12 @@ if (mode == "new") {
     
     models.list <- get_models_list(model.permutations.list, 1)
     models.list %>% head(-2) %>% resamples %>% dotplot
-}
+  }
 
 
 ################################################################################
 # 4. Evaluate Models
 ################################################################################
-
 
 ########################################
 ## 4.1 Training Set Performance
