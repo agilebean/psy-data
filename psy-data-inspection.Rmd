@@ -46,8 +46,9 @@ seed <- 17
 ``` 
 
 # 1. Data Acquistion
+The file "Personality-Performance-Turnover-Chaehan So.sav" is in SPSS format. Columns contain hidden "variable labels" below column names as shown in the following.
 
-```{r data acquisition, echo=FALSE, warning=FALSE}
+```{r data acquisition, echo=FALSE, message=FALSE, warning=FALSE}
 
 #######################################################################
 # 1. Data Acquistion
@@ -105,7 +106,7 @@ if (nominal) {
 
 ### 2.1.1 Data Structure
 A glimpse at the data structure of the raw data shows that 6 of the 57 variables are categorical: COMNAME, team_id, class, job, gender, educa. Thereof, only educa is ordinal. 
-All other variables (Big5 items, LIFE_S_R, JOB_S_R, turnover, performance) had been converted to numerical values although they are strictly speaking ordinal variables. The only variable reflecting an intrinsically numeric data type is "howlong", defined as tenure in months.
+All other variables (Big5 items, LIFE_S_R, JOB_S_R, turnover, performance) had been converted to numerical values although they are - strictly speaking - ordinal variables. The only variable reflecting an intrinsically numeric data type is howlong, defined as tenure in months.
 
 ```{r data preparation, echo=TRUE}
 data.raw %>% glimpse
@@ -115,7 +116,7 @@ data.raw %>% glimpse
 ### 2.1.2 Histograms
 All big5 items, social desirability (sd) and infrequency (inf) are more or less normally distributed.
 Tenure (howlong) shows a logarithmic decline.
-In contrast, performance, job satisfaction and life satisfaction are highley skewed except PERF09 and PERF11. The turnover variables all show little or zero variance.
+In contrast, performance variables all are highley skewed except PERF09 and PERF11. The turnover variables all show little or zero variance.
 
 
 ```{r histograms, fig.height=8.7, fig.width=7, cache=FALSE, echo=FALSE}
@@ -159,7 +160,7 @@ na.sorted <- na.columns %>%
 ## 2.2 Data Cleaning
 
 ### Goal: Define a datasets with least # of NAs
-### Set target = mean performance score ("PERF.all")
+### Set target = mean performance score ("PERF.all") or one-year performance ("PERF09")
 
 ### 2.2.1 Prune dataset
 
@@ -192,7 +193,7 @@ data.pruned <- data.raw %>%
   ) %>% 
   # create mean performance & turnover score
   mutate(PERF.all = rowMeans(select(., starts_with("PERF")) ) ) %>%
-  mutate(TO.all = rowMeans(select(., starts_with("TO")) ) ) %T>% print 
+  mutate(TO.all = rowMeans(select(., starts_with("TO")) ) )
 
 ```
 
@@ -212,7 +213,7 @@ The final dataset has the following structure:
 dataset %>% glimpse
 ```
 
-\newpage
+
 ### 2.2.1 Correlation Plot "items": All Big5 items
 
 To visualize the correlations, the following dataset uses the Big5 items instead of the Big5 composite scores.
@@ -225,12 +226,13 @@ dataset.items <- dataset %>%
 
 In the correlation plot for dataset.items, we can see that the Big5 composite scores (e.g. nn) are highly correlated with the corresponding items (e.g. nn1, nn2, ..., nn6). Therefore, the Big5 items can be removed from the dataset without losing too much predictive information.
 
-Importantly, some of the turnover variables (TO08, TO09) yield no correlations - this can be explained by their nearly zero variance pattern.
+Importantly, some of the turnover variables (TO08, TO09) yield no correlations - this can be explained by their nearly zero variance pattern, i.e. their standard deviation is nearly zero.
 
 
-```{r corrplot1, fig.height=6, fig.width=6, cache=FALSE, echo=FALSE}
+```{r corrplot1, fig.height=6, fig.width=6, cache=FALSE, echo=FALSE, warning=FALSE}
 dataset.items %>% 
   select_if(is.numeric) %>% 
+  # select(-TO08, -TO09) %>% # suppress warning: "the standard deviation is zero"
   cor(use = "pairwise.complete.obs") %>% 
   corrplot::corrplot()
 ```
@@ -248,7 +250,7 @@ dataset.composites <- dataset %>%
 ```
 
 The correlation plot for dataset.composites shows an interesting pattern:
-The performance variables PERF07, PERF08, PERF09 show correlations in increasing order with any Big5 composite score. 
+The performance variables PERF07, PERF08, PERF09 show correlations in increasing order with every Big5 composite score. 
   
 ```{r corrplot2, fig.height=6, fig.width=6, cache=TRUE, echo=FALSE}
 dataset.composites %>% 
@@ -258,8 +260,7 @@ dataset.composites %>%
 ```
 
 Performance (PERF.all) correlates moderately positively with conscientiousness and moderately negatively with neuroticism, as expected.
-Social desirability (sd) correlates strongly negatively with neuroticism, interestingly, and moderately positively with conscientiousness. 
-Taken together, social desirability and performance only show a weak positive relationship.
+Social desirability (sd) correlates strongly negatively with neuroticism, interestingly, and moderately positively with conscientiousness. Although latter positivly relates to performance, social desirability and performance only show a weak positive relationship.
 
 
 ```{r save datasets, include=FALSE}
