@@ -1,0 +1,276 @@
+---
+output: 
+  pdf_document: 
+    fig_caption: true
+    fig_width: 6
+    fig_height: 4
+
+params:
+  date: !r Sys.Date()
+  # target.label: "PERF.all"
+  target.label: "PERF09"
+  features.set: "big5items"
+  # features.set: "big5composites"
+  split.ratio: 0.80
+
+title: "Job Performance Analysis with
+        target = `r params$target.label` and features set = `r params$features.set`"
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+# knitr::opts_knit$set(global.par = TRUE)
+
+
+# clear the workspace
+# rm(list=ls()) # tricky: deletes params
+
+dataset.label <- paste0(c("data/dataset", "rds"), collapse = ".")
+
+# devtools::install_github("agilebean/machinelearningtools", force = TRUE)
+# load libraries
+libraries <- c("dplyr", "magrittr", "tidyverse", "purrr"
+               , "sjlabelled" # read SPSS
+               , "caret", "doParallel"
+               , "stargazer", "DataExplorer", "skimr", "RColorBrewer"
+               , "machinelearningtools"
+               , "knitr", "pander"
+)
+sapply(libraries, require, character.only = TRUE)
+
+# nominal <- FALSE # with ordinal as ORDERED factors
+nominal <- TRUE # with ordinal as NOMINAL factor
+
+seed <- 17
+
+get_features <- function(target_label, features_set, data_set) {
+  
+  data_set %>% 
+    select(-target_label,
+           -starts_with("TO"),
+           -starts_with("PERF")
+    ) %>% 
+    {
+      if (features_set == "big5items") {
+        # remove composite scores - equivalent to (-nn, -ee, -oo, -aa, -cc)
+        select(., -matches("(oo|cc|ee|aa|nn)$")) 
+        
+      } else if (features_set == "big5composites") {
+        # remove Big5 items
+        select(., -matches(".*(1|2|3|4|5|6)"))
+        
+      } else { . }
+    } %>% 
+    names %T>% print
+}
+```
+
+
+# 1. Data Acquistion
+
+```{r data acquisition, include=TRUE}
+#######################################################################
+# 1. Data Acquistion
+#######################################################################
+dataset.label %>% print
+dataset <- readRDS(dataset.label)
+
+```
+
+# 2. Data Preparation
+
+## 2.4 Select the target & features
+
+```{r select target & features code, include=FALSE}
+########################################
+## 2.4 Select the target & features
+########################################
+
+set.seed(seed)
+dataset %<>% nrow %>% sample %>% dataset[.,]
+
+########################################
+# 3.2: Select the features & formula
+########################################
+# define features
+features <- get_features(params$target.label, params$features.set, dataset)
+
+# define formula
+formula1 <- set_formula(params$target.label, features)
+
+# grepl("PERF[0-9]", params$target.label) %>% print
+# r  {paste("the averaged performance score")}
+# if (params$target.label == "PERF.all") # good
+# ìf (params$target.label == "PERF.all") #  bad
+
+```
+
+For this analysis, the target is set to `r if (params$target.label == "PERF.all") {paste("the averaged performance score")} else if (grepl("PERF[0-9]", params$target.label)) { paste("a one-year performance score")} else if (params$target.label == "TO.all") {paste("the averaged turnover score")} else {paste(params$target.label)}`, and the features are `r if (params$features.set == "big5items") {paste("all Big5 items")} else if (params$features.set =="big5composites") {paste("the Big5 composite scores")} else {paste(params$features.set)}`.
+
+The number of variables is reduced from `r nrow(dataset)`  variables to the target variable (`r params$target.label`) and `r length(features)` features.
+
+```{r select target & features, echo=TRUE}
+params$target.label
+features
+```
+
+## 2.3 Split the data
+To train the machine learning models, we split the data into a training set (`r params$split.ratio*100`%) for training and tuning the models, and a testing set (`r 100-params$split.ratio*100`%) that serves as unseen data for the final validation step.
+To avoid imbalance between training and testing set, we must first randomize the data (shuffle).
+
+
+```{r split the data code, include=FALSE}
+########################################
+## 2.3 Split the data
+########################################
+# shuffle data
+set.seed(seed)
+# set.seed(5)
+shuffle.index <- dataset %>% nrow %>% sample
+dataset %<>% .[shuffle.index,] %T>% print
+# short version:
+# dataset %<>% nrow %>% sample %>% dataset[.,] %T>% print
+
+# later: imputation of NAs
+# dataset %>% preProcess(method="knnImpute") %>% print
+
+# dataset subsetting for tibble: [[
+training.index <- createDataPartition(dataset[[params$target.label]], 
+                                      p = params$split.ratio, list = FALSE)
+testing.set <- dataset[-training.index, ]
+training.set <- dataset[training.index, ]
+
+```
+
+We verify the `r params$split.ratio*100`:`r 100-params$split.ratio*100` split by checking the number of observations:
+
+```{r split the data}
+training.set %>% nrow
+testing.set %>% nrow
+```
+
+# 3. Train Model
+
+```{r train the model code, include=FALSE}
+################################################################################
+# 3. Train Model
+# 3-1: Select a model
+# 3-2: Select the target, features, training data
+# 3-3: Train the model with the target and features
+################################################################################
+
+########################################
+# 3-1: Select a model
+########################################
+algorithm.list <- c(
+  "lm",
+  "knn",
+  "gbm",
+  "rf",
+  "ranger",
+  "xgbTree",
+  "xgbLinear",
+  "svmLinear",
+  "svmRadial"
+)
+  
+```
+
+The machine learning models used in the benchmarking are:
+
+**Linear models:**
+  | "lm": linear regression (benchmarking baseline)
+  | "glm": logistic regression
+  | "xgbLinear": extreme gradient boosting  - linear kernel
+  | "svmLinear": support vector machines - linear kernel
+  
+**Tree-based models:**
+  | "gbm": gradient boosting machines
+  | "rf", "ranger": random forests
+  | "xgbTree": extreme gradient boosting - tree kernel
+  
+**Other non-linear models:**
+  | "knn": k nearest neighbors
+  | "svmRadial": support vector machines - radial kernel
+
+# 4. Evaluate Models
+```{r get model, cache=TRUE, include=FALSE}
+models.list.name <- paste0(c("data/models.list", 
+                             params$target.label, params$features.set, "rds"),
+                           collapse = ".") %T>% print
+models.list <- models.list.name %>% readRDS
+
+training_configuration <- models.list[[1]] %>% .$control
+```
+
+Training the model on the training set with `r training_configuration$number`-fold cross-validation, repeated  `r training_configuration$repeats` times, yields the following results. Linear regression as benchmark reference is denoted as "lm".
+
+## 4.1 Training Set Performance
+
+```{r train the model,fig.width=7, fig.height=5, cache=FALSE, echo=FALSE}
+########################################
+## 4.1 Training Set Performance
+########################################
+# get model metrics
+models.metrics <- models.list %>% get_model_metrics 
+
+# display Rsquared trainingset performance - table
+# models.metrics$Rsquared.training %>% kable(caption = "training set performance: Rsquared")
+
+# display RMSE trainingset performance - table
+models.metrics$RMSE.training %>% kable(caption = "training set performance: RMSE")
+
+# display RMSE trainingset performance - boxplots
+models.metrics$RMSE.boxplots
+
+# models.metrics$RMSE.training %>% filter(str_detect(model, "^lm$"))
+rank.lm.training <- which(models.metrics$RMSE.training$model == "lm")
+```
+
+We can see that linear regression ("lm") performs on `r rank.lm.training`th RMSE rank of the selected machine learning models. This result must be validated on the testing set.
+
+
+## 4.2 Testing Set Performance
+
+```{r testing set RMSE, cache=FALSE}
+########################################
+## 4.2 Testing Set Performance
+########################################
+
+## very tricky: models.list is overridden by previous code
+## solution: read again
+# models.list <- models.list.name %>% readRDS
+# 
+# # RMSE for all models on testing set
+# models.list %>%
+#   get_model_metrics %>%
+#   .$RMSE.testing %>% kable(caption = "testing set performance: RMSE")
+# 
+# # training vs. testing set performance
+# models.list %>%
+#   get_model_metrics %>%
+#   .$RMSE.all %>% kable(caption = "training vs. testing set performance: RMSE")
+
+models.metrics$RMSE.testing %>% kable(caption = "testing set performance: RMSE")
+
+rank.lm.testing <- which(models.metrics$RMSE.testing$model == "lm")
+```
+
+We had reserved a portion of the original data as testing set to validate the model performance on unseen data. 
+The model comparison on RMSE shows that linear regression model `r if (rank.lm.testing == rank.lm.training) {paste0("remained on ", rank.lm.training, "th rank.")} else if (rank.lm.testing < rank.lm.training) {paste0("improved from ", rank.lm.training, "th to ", rank.lm.testing, "th rank.")} else {paste0("dropped from ", rank.lm.training, "th to ", rank.lm.testing, "th rank.")}`
+
+The following table compares all models training set performance with their testing set performance.
+
+```{r testing set benchmark all}
+models.metrics$RMSE.all %>% kable(caption = "training vs. testing set performance: RMSE")
+```
+
+
+
+
+
+
+
+
+

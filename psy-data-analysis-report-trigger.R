@@ -13,9 +13,8 @@ mode <- "report.all"
 
 # load libraries
 # devtools::install_github("agilebean/machinelearningtools", force = TRUE)
-libraries <- c("dplyr", "magrittr", "tidyverse", "purrr")
+libraries <- c("dplyr", "tidyverse")
 sapply(libraries, require, character.only = TRUE)
-
 
 if (mode == "report.single") {
   
@@ -23,8 +22,8 @@ if (mode == "report.single") {
   target.label <- "PERF.all"
   # target.label <- "PERF09"
   
-  features.set <- "big5items"
-  # features.set <- "big5composites"
+  # features.set <- "big5items"
+  features.set <- "big5composites"
   output.filename <- paste0(c("output/psy-data-analysis", 
                               target.label, features.set, "pdf"),
                             collapse = ".") %>% print
@@ -46,7 +45,7 @@ if (mode == "report.single") {
   
   render_report <- function(target.label, features.set) {
     
-    output.filename <- paste("output/psy-data-analysis", target.label, features.set, "pdf", sep = ".") %T>% print
+    output.filename <- paste("output/psy-data-analysis", target.label, features.set, "pdf", sep = ".") %>% print
     
     rmarkdown::render(input = "psy-data-analysis.Rmd",
                       params = list(target.label = target.label,
