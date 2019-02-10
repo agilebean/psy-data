@@ -19,7 +19,8 @@ mode <- "old"
 # target.label <- "PERF07"
 target.label <- "PERF.all"
 
-dataset.label <- paste0(c("data/dataset", target.label, "rds"), collapse = ".")
+dataset.label <- paste0(c("data/dataset.rds"), collapse = ".")
+dataset.NA.label <- paste0(c("data/dataset.NA.rds"), collapse = ".")
 
 # features.set <- "big5composite"
 features.set <- "big5items"
@@ -203,6 +204,7 @@ Removing the missing values shrinks the dataset from n=1621 to n=1023.
 
 ```{r define dataset without NA, echo=TRUE}
 data.pruned %>% nrow
+data.pruned %>% saveRDS(dataset.NA.label)
 ## final removal of NA rows
 dataset <- data.pruned %>% drop_na %T>% { print(nrow(.)) }
 ```
