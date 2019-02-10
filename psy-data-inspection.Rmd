@@ -151,8 +151,7 @@ na.columns <- data.raw %>%
 
 ## rank top NA columns
 na.sorted <- na.columns %>% 
-  t %>% as.data.frame %>% # was matrix
-  tibble::rownames_to_column() %>% 
+  t %>% as_tibble(rownames = "variable") %>% 
   rename(NA.count = V1) %>% 
   arrange(desc(NA.count)) %T>% print
 ```
