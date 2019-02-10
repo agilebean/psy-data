@@ -11,6 +11,8 @@ rm(list=ls())
 # mode <- "report.single"
 mode <- "report.all"
 
+CV.REPEATS <- 100
+
 # load libraries
 # devtools::install_github("agilebean/machinelearningtools", force = TRUE)
 libraries <- c("dplyr", "tidyverse")
@@ -49,7 +51,8 @@ if (mode == "report.single") {
     
     rmarkdown::render(input = "psy-data-analysis.Rmd",
                       params = list(target.label = target.label,
-                                    features.set = features.set),
+                                    features.set = features.set,
+                                    cv.repeats = CV.REPEATS),
                       output_file = output.filename)
   }
 

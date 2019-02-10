@@ -18,9 +18,9 @@ dataset.label <- paste0(c("data/dataset", "rds"), collapse = ".")
 libraries <- c("dplyr", "magrittr", "tidyverse"
                , "sjlabelled" # read SPSS
                , "caret", "doParallel"
-               , "stargazer", "DataExplorer", "skimr"
+               , "RColorBrewer"
                , "machinelearningtools"
-               , "knitr", "pander"
+               , "knitr"
 )
 sapply(libraries, require, character.only = TRUE)
 
@@ -34,6 +34,12 @@ model.permutations.list <- crossing(target_label = target.label.list,
 nominal <- TRUE # with ordinal as NOMINAL factor
 
 seed <- 17
+
+# cross-validation repetitions
+CV.REPEATS <- 100
+
+# try first x rows of training set
+TRY.FIRST <- 50
 
 #######################################################################
 # define features
@@ -64,10 +70,14 @@ get_features <- function(target_label, features_set, data_set) {
 #######################################################################
 train_model_permutations <- function(target_label, features_set, 
                                      data_set, algorithm_list, training_configuration, 
-                                     seed = 17, split_ratio = 0.80, try_first = NULL
+                                     seed = 17, split_ratio = 0.80, 
+                                     cv_repeats, try_first = NULL
                                      ) {
   # define output filename
-  models.list.name <- paste0(c("data/models.list", target_label, features_set, "rds"), 
+  models.list.name <- paste0(c("data/models.list", 
+                               target_label, features_set, 
+                               paste0(cv_repeats, "repeats"),
+                               "rds"), 
                              collapse = ".") %T>% print
   
   ########################################
@@ -159,12 +169,14 @@ if (mode == "new") {
   cluster.new <- clusterOn()
   
   system.time(
-    result <- model.permutations.list %>% 
+    result.permutations <- model.permutations.list %>% 
       pmap(train_model_permutations, 
            data_set = dataset,
            algorithm_list = algorithm.list,
-           training_configuration = trainControl(method = "repeatedcv", number = 10, repeats = 10), 
-           try_first = NULL
+           training_configuration = trainControl(
+             method = "repeatedcv", number = 10, repeats = CV.REPEATS), 
+           cv_repeats = CV.REPEATS,
+           try_first = TRY.FIRST
       )
   ) %>% print
 
@@ -173,7 +185,7 @@ if (mode == "new") {
   
   } else if (mode == "old") {
     
-    models.list <- get_models_list(model.permutations.list, 1)
+    models.list <- get_models_list(model.permutations.list, model_index = 1, CV.REPEATS)
     models.list %>% head(-2) %>% resamples %>% dotplot
   }
 
@@ -185,8 +197,8 @@ if (mode == "new") {
 ########################################
 ## 4.1 Training Set Performance
 ########################################
-# get model
-models.list <- get_models_list(model.permutations.list, 5)
+# get model 
+models.list <- get_models_list(model.permutations.list, model_index = 1, CV.REPEATS)
 
 # training set performance
 models.metrics <- models.list %>% get_model_metrics %T>% print
@@ -214,6 +226,16 @@ models.metrics$RMSE.all
 #
 ################################################################################
 ################################################################################
+
+library(tidyposterior)
+# models.resamples <- models.list %>% head(-2) %>% resamples
+# rmse_model <- models.resamples %>%
+#   perf_mod(metric = "RMSE", seed = seed, verbose = TRUE) %>%
+#   saveRDS("rmse_model.rds")
+rmse_model <- readRDS("rmse_model.rds")
+rmse_model %>% tidy %>% summary %>% arrange(mean)
+models.metrics$RMSE.training
+
 
 ################################################################################
 #

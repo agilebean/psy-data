@@ -12,6 +12,7 @@ params:
   features.set: "big5items"
   # features.set: "big5composites"
   split.ratio: 0.80
+  cv.repeats: 100
 
 title: "Job Performance Analysis with
         target = `r params$target.label` and features set = `r params$features.set`"
@@ -21,7 +22,7 @@ title: "Job Performance Analysis with
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE)
 # knitr::opts_knit$set(global.par = TRUE)
-
+options(digits = 3)
 
 # clear the workspace
 # rm(list=ls()) # tricky: deletes params
@@ -30,10 +31,10 @@ dataset.label <- paste0(c("data/dataset", "rds"), collapse = ".")
 
 # devtools::install_github("agilebean/machinelearningtools", force = TRUE)
 # load libraries
-libraries <- c("dplyr", "magrittr", "tidyverse", "purrr"
+libraries <- c("dplyr", "magrittr", "tidyverse"
                , "sjlabelled" # read SPSS
                , "caret", "doParallel"
-               , "stargazer", "DataExplorer", "skimr", "RColorBrewer"
+               , "DataExplorer", "RColorBrewer"
                , "machinelearningtools"
                , "knitr", "pander"
 )
@@ -196,15 +197,19 @@ The machine learning models used in the benchmarking are:
 
 # 4. Evaluate Models
 ```{r get model, cache=TRUE, include=FALSE}
-models.list.name <- paste0(c("data/models.list", 
-                             params$target.label, params$features.set, "rds"),
-                           collapse = ".") %T>% print
+models.list.name <- paste("data/models.list",
+                          params$target.label, 
+                          params$features.set,
+                          paste0(params$cv.repeats, "repeats"),
+                          "rds",
+                          sep = ".") %T>% print
 models.list <- models.list.name %>% readRDS
 
-training_configuration <- models.list[[1]] %>% .$control
+training_configuration_number <- models.list[[1]] %>% .$control %>% .$number
+training_configuration_repeats <- models.list[[1]] %>% .$control %>% .$repeats
 ```
 
-Training the model on the training set with `r training_configuration$number`-fold cross-validation, repeated  `r training_configuration$repeats` times, yields the following results. Linear regression as benchmark reference is denoted as "lm".
+Training the model on the training set with `r training_configuration_number`-fold cross-validation, repeated  `r training_configuration_repeats` times, yields the following results. Linear regression as benchmark reference is denoted as "lm".
 
 ## 4.1 Training Set Performance
 
