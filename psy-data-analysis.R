@@ -8,8 +8,8 @@
 # clear the workspace
 rm(list=ls())
 
-# mode <- "new"
-mode <- "old"
+mode <- "new"
+# mode <- "old"
 
 # load libraries
 # devtools::install_github("agilebean/machinelearningtools", force = TRUE)
@@ -19,6 +19,7 @@ libraries <- c("dplyr", "magrittr", "tidyverse"
                , "RColorBrewer"
                , "machinelearningtools"
                , "knitr"
+               , "RPushbullet", "beepr"
 )
 sapply(libraries, require, character.only = TRUE)
 
@@ -34,7 +35,7 @@ nominal <- TRUE # with ordinal as NOMINAL factor
 seed <- 17
 
 # cross-validation repetitions
-CV.REPEATS <- 100
+CV.REPEATS <- 2
 
 # try first x rows of training set
 TRY.FIRST <- 50
@@ -201,7 +202,7 @@ if (mode == "new") {
   
   cluster.new <- clusterOn(detectCores())
   
-  system.time(
+  time.total <- system.time(
     result.permutations <- model.permutations.list %>% 
       pmap(train_model_permutations, 
            data_set = dataset,
@@ -216,6 +217,22 @@ if (mode == "new") {
 
   # stop cluster if exists
   if (nrow(showConnections()) != 0) { stopCluster(cluster.new) }
+  
+  # beep
+  beepr::beep("facebook")
+  
+  # send push notification to iPhone app
+  pbPost(type = "note", 
+         title = paste("Machine Learning Training Success after", 
+                       round(time.total["elapsed"]/3600, digits = 2), "hours"),
+         body = paste("The training for models ", 
+                      paste(algorithm.list, collapse = ", "),
+                      "finished successfully after ",
+                      round(time.total["elapsed"]/3600, digits = 2),
+                      "hours"),
+         devices = "ujyr8RSNXs4sjAsoeMFET6"
+         # devices = "ujyr8RSNXs4sjz7O3P0Jl6" # Chrome Browser
+  )
   
   } else if (mode == "old") {
     
@@ -273,16 +290,7 @@ models.metrics$RMSE.all
 ################################################################################
 ################################################################################
 
-dataset %>% select(starts_with("PERF")) %>% summarise_all(~sum(is.na(.)))
 
-library(tidyposterior)
-# models.resamples <- models.list %>% head(-2) %>% resamples
-# rmse_model <- models.resamples %>%
-#   perf_mod(metric = "RMSE", seed = seed, verbose = TRUE) %>%
-#   saveRDS("rmse_model.rds")
-rmse_model <- readRDS("rmse_model.rds")
-rmse_model %>% tidy %>% summary %>% arrange(mean)
-models.metrics$RMSE.training
 
 
 ################################################################################
