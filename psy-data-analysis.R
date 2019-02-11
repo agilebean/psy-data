@@ -8,10 +8,8 @@
 # clear the workspace
 rm(list=ls())
 
-# mode <- "new"
-mode <- "old"
-
-dataset.label <- paste0(c("data/dataset", "rds"), collapse = ".")
+mode <- "new"
+# mode <- "old"
 
 # load libraries
 # devtools::install_github("agilebean/machinelearningtools", force = TRUE)
@@ -36,10 +34,19 @@ nominal <- TRUE # with ordinal as NOMINAL factor
 seed <- 17
 
 # cross-validation repetitions
-CV.REPEATS <- 100
+CV.REPEATS <- 10
 
 # try first x rows of training set
 TRY.FIRST <- 50
+
+IMPUTE.METHOD <- NULL
+# IMPUTE.METHOD <- "medianImpute"
+
+if (is.null(IMPUTE.METHOD)) {
+  dataset.label <- paste0(c("data/dataset", "rds"), collapse = ".")  
+} else {
+  dataset.label <- paste0(c("data/dataset.NA", "rds"), collapse = ".")  
+}
 
 #######################################################################
 # define features
@@ -69,14 +76,27 @@ get_features <- function(target_label, features_set, data_set) {
 # TRAIN model permutations
 #######################################################################
 train_model_permutations <- function(target_label, features_set, 
+                                     preprocess_configuration = c("center", "scale"),
+                                     impute_method = NULL,
                                      data_set, algorithm_list, training_configuration, 
                                      seed = 17, split_ratio = 0.80, 
                                      cv_repeats, try_first = NULL
                                      ) {
+  # target_label <- target.label
+  # features_set <- features.set
+  # preprocess_configuration = c("center", "scale")
+  # cv_repeats <- CV.REPEATS
+  # data_set <- dataset
+  # algorithm_list <- algorithm.list
+  # training_configuration <-trainControl(method = "repeatedcv", number = 10, repeats = CV.REPEATS) 
+  # impute_method = IMPUTE.METHOD
+  # split_ratio <- 0.80
+  
   # define output filename
   models.list.name <- paste0(c("data/models.list", 
                                target_label, features_set, 
                                paste0(cv_repeats, "repeats"),
+                               { if (!is.null(impute_method)) paste(impute_method)},
                                "rds"), 
                              collapse = ".") %T>% print
   
@@ -119,8 +139,9 @@ train_model_permutations <- function(target_label, features_set,
         train(formula1
               , method = algorithm_label
               , data = if (is.null(try_first)) training.set else head(training.set, try_first)
-              , preProcess = c("center", "scale")
+              , preProcess = preprocess_configuration
               , trControl = training_configuration
+              , na.action = na.omit
         )
       }) %>%
       setNames(algorithm_list) 
@@ -133,8 +154,11 @@ train_model_permutations <- function(target_label, features_set,
   models.list$target.label <- target_label
   models.list$testing.set <- testing.set
   # 
-  # # save the models.list
-  models.list %>% saveRDS(models.list.name)
+  # save the models.list
+  if (!is.null(try_first)) {
+    
+    models.list %>% saveRDS(models.list.name) 
+  }
   
   return(models.list)
 }
@@ -160,18 +184,27 @@ algorithm.list <- c(
   , "svmRadial"
 )
 
-
 #######################################################################
 # MAIN
 #######################################################################
 if (mode == "new") {
   
-  cluster.new <- clusterOn()
+  if (!is.null(IMPUTE.METHOD)) {
+    
+    dataset.imputed <- dataset %>% 
+      preProcess(method = IMPUTE.METHOD) %>% 
+      predict(model.imputed, newdata = dataset) %T>% print
+    
+    dataset <- dataset.imputed %>% na.omit
+  }
+  
+  cluster.new <- clusterOn(detectCores())
   
   system.time(
     result.permutations <- model.permutations.list %>% 
       pmap(train_model_permutations, 
            data_set = dataset,
+           impute_method = IMPUTE.METHOD,
            algorithm_list = algorithm.list,
            training_configuration = trainControl(
              method = "repeatedcv", number = 10, repeats = CV.REPEATS), 
@@ -181,11 +214,13 @@ if (mode == "new") {
   ) %>% print
 
   # stop cluster if exists
-  if (nrow(showConnections()) != 0) stopCluster(cluster.new) 
+  if (nrow(showConnections()) != 0) { stopCluster(cluster.new) }
   
   } else if (mode == "old") {
     
-    models.list <- get_models_list(model.permutations.list, model_index = 1, CV.REPEATS)
+    models.list <- get_models_list(model.permutations.list, model_index = 1, 
+                                   cv_repeats = CV.REPEATS)
+    
     models.list %>% head(-2) %>% resamples %>% dotplot
   }
 
@@ -194,11 +229,22 @@ if (mode == "new") {
 # 4. Evaluate Models
 ################################################################################
 
+
 ########################################
 ## 4.1 Training Set Performance
 ########################################
 # get model 
-models.list <- get_models_list(model.permutations.list, model_index = 1, CV.REPEATS)
+model.index <- 1
+if (mode == "new") {
+  
+  models.list <- result.permutations[[model.index]]
+  
+} else if (mode == "old") {
+  
+  models.list <- get_models_list(model.permutations.list, 
+                                 model_index = model.index, 
+                                 CV.REPEATS)
+}
 
 # training set performance
 models.metrics <- models.list %>% get_model_metrics %T>% print
@@ -226,6 +272,8 @@ models.metrics$RMSE.all
 #
 ################################################################################
 ################################################################################
+
+dataset %>% select(starts_with("PERF")) %>% summarise_all(~sum(is.na(.)))
 
 library(tidyposterior)
 # models.resamples <- models.list %>% head(-2) %>% resamples
