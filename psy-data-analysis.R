@@ -8,8 +8,8 @@
 # clear the workspace
 rm(list=ls())
 
-mode <- "new"
-# mode <- "old"
+# mode <- "new"
+mode <- "old"
 
 # load libraries
 # devtools::install_github("agilebean/machinelearningtools", force = TRUE)
@@ -22,7 +22,7 @@ libraries <- c("dplyr", "magrittr", "tidyverse"
 )
 sapply(libraries, require, character.only = TRUE)
 
-target.label.list <- c("PERF09", "PERF.all", "TO.all")
+target.label.list <- c("PERF09", "PERF.all", "TO.all", "LIFE_S_R")
 features.set.list <- c("big5items", "big5composites")
 
 model.permutations.list <- crossing(target_label = target.label.list, 
@@ -34,13 +34,13 @@ nominal <- TRUE # with ordinal as NOMINAL factor
 seed <- 17
 
 # cross-validation repetitions
-CV.REPEATS <- 10
+CV.REPEATS <- 100
 
 # try first x rows of training set
 TRY.FIRST <- 50
 
-IMPUTE.METHOD <- NULL
-# IMPUTE.METHOD <- "medianImpute"
+# IMPUTE.METHOD <- NULL
+IMPUTE.METHOD <- "medianImpute"
 
 if (is.null(IMPUTE.METHOD)) {
   dataset.label <- paste0(c("data/dataset", "rds"), collapse = ".")  
@@ -82,15 +82,16 @@ train_model_permutations <- function(target_label, features_set,
                                      seed = 17, split_ratio = 0.80, 
                                      cv_repeats, try_first = NULL
                                      ) {
-  # target_label <- target.label
-  # features_set <- features.set
-  # preprocess_configuration = c("center", "scale")
-  # cv_repeats <- CV.REPEATS
-  # data_set <- dataset
-  # algorithm_list <- algorithm.list
-  # training_configuration <-trainControl(method = "repeatedcv", number = 10, repeats = CV.REPEATS) 
-  # impute_method = IMPUTE.METHOD
-  # split_ratio <- 0.80
+  target_label <- "PERF09"
+  features_set <- "big5items"
+  preprocess_configuration = c("center", "scale")
+  cv_repeats <- 10
+  data_set <- dataset
+  algorithm_list <- algorithm.list
+  training_configuration <-trainControl(method = "repeatedcv", number = 10, repeats = CV.REPEATS)
+  impute_method <-  IMPUTE.METHOD
+  impute_method <- NULL
+  split_ratio <- 0.80
   
   # define output filename
   models.list.name <- paste0(c("data/models.list", 
@@ -176,10 +177,10 @@ algorithm.list <- c(
   ,"glm"
   , "knn"
   , "gbm"
-  , "rf"
+  # , "rf" 754s/100rep
   , "ranger"
-  , "xgbTree"
-  , "xgbLinear"
+  # , "xgbTree" 377s/100rep
+  # , "xgbLinear" 496s/100rep
   , "svmLinear"
   , "svmRadial"
 )
@@ -229,7 +230,6 @@ if (mode == "new") {
 # 4. Evaluate Models
 ################################################################################
 
-
 ########################################
 ## 4.1 Training Set Performance
 ########################################
@@ -243,7 +243,7 @@ if (mode == "new") {
   
   models.list <- get_models_list(model.permutations.list, 
                                  model_index = model.index, 
-                                 CV.REPEATS)
+                                 cv_repeats = CV.REPEATS)
 }
 
 # training set performance

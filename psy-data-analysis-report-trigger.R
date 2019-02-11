@@ -11,7 +11,10 @@ rm(list=ls())
 # mode <- "report.single"
 mode <- "report.all"
 
-CV.REPEATS <- 100
+CV.REPEATS <- 10
+# CV.REPEATS <- 100
+IMPUTE.METHOD <- "medianImpute"
+# IMPUTE.METHOD <- NULL
 
 # load libraries
 # devtools::install_github("agilebean/machinelearningtools", force = TRUE)
@@ -47,12 +50,18 @@ if (mode == "report.single") {
   
   render_report <- function(target.label, features.set) {
     
-    output.filename <- paste("output/psy-data-analysis", target.label, features.set, "pdf", sep = ".") %>% print
+    output.filename <- paste0(c("output/psy-data-analysis", 
+                             target.label, features.set, 
+                             paste0(CV.REPEATS, "repeats"),
+                             { if (!is.null(IMPUTE.METHOD)) IMPUTE.METHOD },
+                             "pdf"), 
+                             collapse = ".") %>% print
     
     rmarkdown::render(input = "psy-data-analysis.Rmd",
                       params = list(target.label = target.label,
                                     features.set = features.set,
-                                    cv.repeats = CV.REPEATS),
+                                    cv.repeats = CV.REPEATS,
+                                    impute.method = IMPUTE.METHOD),
                       output_file = output.filename)
   }
 

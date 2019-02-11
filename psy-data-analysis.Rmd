@@ -12,7 +12,8 @@ params:
   features.set: "big5items"
   # features.set: "big5composites"
   split.ratio: 0.80
-  cv.repeats: 100
+  cv.repeats: 10
+  impute.method: "medianImpute"
 
 title: "Job Performance Analysis with
         target = `r params$target.label` and features set = `r params$features.set`"
@@ -27,8 +28,6 @@ options(digits = 3)
 # clear the workspace
 # rm(list=ls()) # tricky: deletes params
 
-dataset.label <- paste0(c("data/dataset", "rds"), collapse = ".")
-
 # devtools::install_github("agilebean/machinelearningtools", force = TRUE)
 # load libraries
 libraries <- c("dplyr", "magrittr", "tidyverse"
@@ -39,6 +38,13 @@ libraries <- c("dplyr", "magrittr", "tidyverse"
                , "knitr", "pander"
 )
 sapply(libraries, require, character.only = TRUE)
+
+
+if (is.null(params$impute.method)) {
+  dataset.label <- "data/dataset.rds" %>% print
+} else {
+  dataset.label <- "data/dataset.NA.rds" %>% print
+}
 
 # nominal <- FALSE # with ordinal as ORDERED factors
 nominal <- TRUE # with ordinal as NOMINAL factor
@@ -100,11 +106,6 @@ features <- get_features(params$target.label, params$features.set, dataset)
 # define formula
 formula1 <- set_formula(params$target.label, features)
 
-# grepl("PERF[0-9]", params$target.label) %>% print
-# r  {paste("the averaged performance score")}
-# if (params$target.label == "PERF.all") # good
-# ìf (params$target.label == "PERF.all") #  bad
-
 ```
 
 For this analysis, the target is set to `r if (params$target.label == "PERF.all") {paste("the averaged performance score")} else if (grepl("PERF[0-9]", params$target.label)) { paste("a one-year performance score")} else if (params$target.label == "TO.all") {paste("the averaged turnover score")} else {paste(params$target.label)}`, and the features are `r if (params$features.set == "big5items") {paste("all Big5 items")} else if (params$features.set =="big5composites") {paste("the Big5 composite scores")} else {paste(params$features.set)}`.
@@ -135,6 +136,14 @@ dataset %<>% .[shuffle.index,] %T>% print
 
 # later: imputation of NAs
 # dataset %>% preProcess(method="knnImpute") %>% print
+if (!is.null(params$impute.method)) {
+  
+  dataset.imputed <- dataset %>% 
+    preProcess(method = params$impute.method) %>% 
+    predict(model.imputed, newdata = dataset) %T>% print
+  
+  dataset <- dataset.imputed %>% na.omit
+}
 
 # dataset subsetting for tibble: [[
 training.index <- createDataPartition(dataset[[params$target.label]], 
@@ -168,10 +177,10 @@ algorithm.list <- c(
   "lm",
   "knn",
   "gbm",
-  "rf",
+  # "rf",
   "ranger",
-  "xgbTree",
-  "xgbLinear",
+  # "xgbTree",
+  # "xgbLinear",
   "svmLinear",
   "svmRadial"
 )
@@ -197,12 +206,14 @@ The machine learning models used in the benchmarking are:
 
 # 4. Evaluate Models
 ```{r get model, cache=TRUE, include=FALSE}
-models.list.name <- paste("data/models.list",
+models.list.name <- paste0(c("data/models.list", 
                           params$target.label, 
                           params$features.set,
                           paste0(params$cv.repeats, "repeats"),
-                          "rds",
-                          sep = ".") %T>% print
+                          { if (!is.null(params$impute.method)) params$impute.method},
+                          "rds"), 
+                          collapse = ".") %T>% print
+
 models.list <- models.list.name %>% readRDS
 
 training_configuration_number <- models.list[[1]] %>% .$control %>% .$number
