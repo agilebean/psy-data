@@ -11,10 +11,11 @@ rm(list=ls())
 # mode <- "report.single"
 mode <- "report.all"
 
-CV.REPEATS <- 10
-# CV.REPEATS <- 100
-IMPUTE.METHOD <- "medianImpute"
+# CV.REPEATS <- 10
+CV.REPEATS <- 100
 # IMPUTE.METHOD <- NULL
+# IMPUTE.METHOD <- "medianImpute"
+IMPUTE.METHOD <- "noimpute"
 
 # load libraries
 # devtools::install_github("agilebean/machinelearningtools", force = TRUE)
@@ -53,7 +54,7 @@ if (mode == "report.single") {
     output.filename <- paste0(c("output/psy-data-analysis", 
                              target.label, features.set, 
                              paste0(CV.REPEATS, "repeats"),
-                             { if (!is.null(IMPUTE.METHOD)) IMPUTE.METHOD },
+                             IMPUTE.METHOD,
                              "pdf"), 
                              collapse = ".") %>% print
     

@@ -8,11 +8,12 @@
 # clear the workspace
 rm(list=ls())
 
-mode <- "new"
-# mode <- "old"
+# mode <- "new"
+mode <- "old"
 
 # load libraries
 # devtools::install_github("agilebean/machinelearningtools", force = TRUE)
+
 libraries <- c("dplyr", "magrittr", "tidyverse"
                , "sjlabelled" # read SPSS
                , "caret", "doParallel"
@@ -35,7 +36,7 @@ nominal <- TRUE # with ordinal as NOMINAL factor
 seed <- 17
 
 # cross-validation repetitions
-CV.REPEATS <- 2
+CV.REPEATS <- 100
 
 # try first x rows of training set
 TRY.FIRST <- 50
@@ -83,16 +84,16 @@ train_model_permutations <- function(target_label, features_set,
                                      seed = 17, split_ratio = 0.80, 
                                      cv_repeats, try_first = NULL
                                      ) {
-  target_label <- "PERF09"
-  features_set <- "big5items"
-  preprocess_configuration = c("center", "scale")
-  cv_repeats <- 10
-  data_set <- dataset
-  algorithm_list <- algorithm.list
-  training_configuration <-trainControl(method = "repeatedcv", number = 10, repeats = CV.REPEATS)
-  impute_method <-  IMPUTE.METHOD
-  impute_method <- NULL
-  split_ratio <- 0.80
+  # target_label <- "PERF09"
+  # features_set <- "big5items"
+  # preprocess_configuration = c("center", "scale")
+  # cv_repeats <- 10
+  # data_set <- dataset
+  # algorithm_list <- algorithm.list
+  # training_configuration <-trainControl(method = "repeatedcv", number = 10, repeats = CV.REPEATS)
+  # impute_method <-  IMPUTE.METHOD
+  # impute_method <- NULL
+  # split_ratio <- 0.80
   
   # define output filename
   models.list.name <- paste0(c("data/models.list", 
@@ -212,35 +213,23 @@ if (mode == "new") {
              method = "repeatedcv", number = 10, repeats = CV.REPEATS), 
            cv_repeats = CV.REPEATS,
            try_first = TRY.FIRST
-      )
-  ) %>% print
+      ) %>% setNames(algorithm.list)
+  ) %T>% {push_message(.["elapsed"])}
 
   # stop cluster if exists
-  if (nrow(showConnections()) != 0) { stopCluster(cluster.new) }
-  
-  # beep
-  beepr::beep("facebook")
-  
-  # send push notification to iPhone app
-  pbPost(type = "note", 
-         title = paste("Machine Learning Training Success after", 
-                       round(time.total["elapsed"]/3600, digits = 2), "hours"),
-         body = paste("The training for models ", 
-                      paste(algorithm.list, collapse = ", "),
-                      "finished successfully after ",
-                      round(time.total["elapsed"]/3600, digits = 2),
-                      "hours"),
-         devices = "ujyr8RSNXs4sjAsoeMFET6"
-         # devices = "ujyr8RSNXs4sjz7O3P0Jl6" # Chrome Browser
-  )
+  if (nrow(showConnections()) != 0) {
+    registerDoSEQ()
+    stopCluster(cluster.new)
+  }
   
   } else if (mode == "old") {
     
-    models.list <- get_models_list(model.permutations.list, model_index = 1, 
+    models.list <- get_models_list(model.permutations.list, model_index = 3, 
+                                   impute_method = IMPUTE.METHOD,
                                    cv_repeats = CV.REPEATS)
     
     models.list %>% head(-2) %>% resamples %>% dotplot
-  }
+}
 
 
 ################################################################################
@@ -250,8 +239,8 @@ if (mode == "new") {
 ########################################
 ## 4.1 Training Set Performance
 ########################################
-# get model 
-model.index <- 1
+# get model (here: first model in model.permutations.list)
+model.index <- 3
 if (mode == "new") {
   
   models.list <- result.permutations[[model.index]]
@@ -260,7 +249,8 @@ if (mode == "new") {
   
   models.list <- get_models_list(model.permutations.list, 
                                  model_index = model.index, 
-                                 cv_repeats = CV.REPEATS)
+                                 cv_repeats = CV.REPEATS,
+                                 impute_method = "noimpute")
 }
 
 # training set performance
@@ -269,17 +259,17 @@ models.metrics <- models.list %>% get_model_metrics %T>% print
 # set color palettes (default = "Set1")
 models.list %>% get_model_metrics(palette = "Dark2")
 
-# get model comparison
-models.list %>% head(-2) %>% resamples %>% dotplot
-models.list %>% head(-2) %>% resamples %>% bwplot
+# # get model comparison
+# models.list %>% head(-2) %>% resamples %>% dotplot
+# models.list %>% head(-2) %>% resamples %>% bwplot
 
 ########################################
 ## 4.2 Testing Set Performance
 ########################################
 # RMSE for all models on testing set
-models.metrics$RMSE.testing
+models.metrics$metric1.testing
 # training vs. testing set performance: RMSE
-models.metrics$RMSE.all 
+models.metrics$benchmark.all 
 
 ################################################################################
 ################################################################################

@@ -160,7 +160,6 @@ na.sorted <- na.columns %>%
 ## 2.2 Data Cleaning
 
 ### Goal: Define a datasets with least # of NAs
-### Set target = mean performance score ("PERF.all") or one-year performance ("PERF09")
 
 ### 2.2.1 Prune dataset
 
@@ -172,9 +171,8 @@ To obtain data.pruned, we remove the variables
 - job (342 NAs)
 - class (272 NAs)
 - team_id (238 NAs)
-- LIFE_S_R (107 NAs)
 
-As the remaining dataset would only have 913 observations without NAs, we remove PERF10 and PERF11 which increases sample size to n=1023.
+As the remaining dataset would only have 858 observations without NAs, we remove PERF10 and PERF11 which increases sample size to n=958. We also remove TO07 due to zero variance.
 
 ```{r define data.pruned code, echo=TRUE}
 data.pruned <- data.raw %>% 
@@ -189,11 +187,13 @@ data.pruned <- data.raw %>%
          -class,   #  272 NAs +(904-713)
          -team_id, #  238 NAs +(1053-904)
          # -PERF08,  #  198 NAs +(1202-1053)
-         -LIFE_S_R#  107 NAs +(1288-1202)
+         # -LIFE_S_R #  107 NAs +(1288-1202)
   ) %>% 
   # create mean performance & turnover score
   mutate(PERF.all = rowMeans(select(., starts_with("PERF")) ) ) %>%
-  mutate(TO.all = rowMeans(select(., starts_with("TO")) ) )
+  mutate(TO.all = rowMeans(select(., starts_with("TO")) ) ) %>% 
+  # move life satisfaction to dataframe end to indicate target variable
+  select(-LIFE_S_R, everything())
 
 ```
 
@@ -215,7 +215,7 @@ dataset %>% glimpse
 ```
 
 
-### 2.2.1 Correlation Plot "items": All Big5 items
+### 2.2.3 Correlation Plot "items": All Big5 items
 
 To visualize the correlations, the following dataset uses the Big5 items instead of the Big5 composite scores.
 
@@ -239,7 +239,7 @@ dataset.items %>%
 ```
 
 
-### 2.2.2  Correlation Plot "composites": Big5 composite scores
+### 2.2.4  Correlation Plot "composites": Big5 composite scores
 This dataset uses the Big5 composite scores instead of the Big5 items.
 
 ```{r define dataset.composites code, echo=TRUE}
@@ -253,7 +253,7 @@ dataset.composites <- dataset %>%
 The correlation plot for dataset.composites shows an interesting pattern:
 The performance variables PERF07, PERF08, PERF09 show correlations in increasing order with every Big5 composite score. 
   
-```{r corrplot2, fig.height=6, fig.width=6, cache=TRUE, echo=FALSE}
+```{r corrplot2, fig.height=6, fig.width=6, cache=FALSE, echo=FALSE}
 dataset.composites %>% 
   select_if(is.numeric) %>% 
   cor(use = "pairwise.complete.obs") %>% 

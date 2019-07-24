@@ -9,11 +9,13 @@ params:
   date: !r Sys.Date()
   # target.label: "PERF.all"
   target.label: "PERF09"
-  features.set: "big5items"
-  # features.set: "big5composites"
+  # features.set: "big5items"
+  features.set: "big5composites"
   split.ratio: 0.80
-  cv.repeats: 10
-  impute.method: "medianImpute"
+  cv.repeats: 100
+  # cv.repeats: 10
+  impute.method: "noimpute"
+  # impute.method: "medianImpute"
 
 title: "Job Performance Analysis with
         target = `r params$target.label` and features set = `r params$features.set`"
@@ -39,8 +41,7 @@ libraries <- c("dplyr", "magrittr", "tidyverse"
 )
 sapply(libraries, require, character.only = TRUE)
 
-
-if (is.null(params$impute.method)) {
+if (params$impute.method == "noimpute") {
   dataset.label <- "data/dataset.rds" %>% print
 } else {
   dataset.label <- "data/dataset.NA.rds" %>% print
@@ -136,7 +137,7 @@ dataset %<>% .[shuffle.index,] %T>% print
 
 # later: imputation of NAs
 # dataset %>% preProcess(method="knnImpute") %>% print
-if (!is.null(params$impute.method)) {
+if (params$impute.method != "noimpute") {
   
   dataset.imputed <- dataset %>% 
     preProcess(method = params$impute.method) %>% 
@@ -210,7 +211,7 @@ models.list.name <- paste0(c("data/models.list",
                           params$target.label, 
                           params$features.set,
                           paste0(params$cv.repeats, "repeats"),
-                          { if (!is.null(params$impute.method)) params$impute.method},
+                          params$impute.method,
                           "rds"), 
                           collapse = ".") %T>% print
 
@@ -235,13 +236,13 @@ models.metrics <- models.list %>% get_model_metrics
 # models.metrics$Rsquared.training %>% kable(caption = "training set performance: Rsquared")
 
 # display RMSE trainingset performance - table
-models.metrics$RMSE.training %>% kable(caption = "training set performance: RMSE")
+models.metrics$metric1.training %>% kable(caption = "training set performance: RMSE")
 
 # display RMSE trainingset performance - boxplots
-models.metrics$RMSE.boxplots
+models.metrics$metric1.resamples.boxplots
 
 # models.metrics$RMSE.training %>% filter(str_detect(model, "^lm$"))
-rank.lm.training <- which(models.metrics$RMSE.training$model == "lm")
+rank.lm.training <- which(models.metrics$metric1.training$model == "lm")
 ```
 
 We can see that linear regression ("lm") performs on `r rank.lm.training`th RMSE rank of the selected machine learning models. This result must be validated on the testing set.
@@ -268,9 +269,9 @@ We can see that linear regression ("lm") performs on `r rank.lm.training`th RMSE
 #   get_model_metrics %>%
 #   .$RMSE.all %>% kable(caption = "training vs. testing set performance: RMSE")
 
-models.metrics$RMSE.testing %>% kable(caption = "testing set performance: RMSE")
+models.metrics$metric1.testing %>% kable(caption = "testing set performance: RMSE")
 
-rank.lm.testing <- which(models.metrics$RMSE.testing$model == "lm")
+rank.lm.testing <- which(models.metrics$metric1.testing$model == "lm")
 ```
 
 We had reserved a portion of the original data as testing set to validate the model performance on unseen data. 
@@ -279,7 +280,7 @@ The model comparison on RMSE shows that linear regression model `r if (rank.lm.t
 The following table compares all models training set performance with their testing set performance.
 
 ```{r testing set benchmark all}
-models.metrics$RMSE.all %>% kable(caption = "training vs. testing set performance: RMSE")
+models.metrics$benchmark.all %>% kable(caption = "training vs. testing set performance: RMSE")
 ```
 
 
