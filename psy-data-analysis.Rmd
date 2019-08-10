@@ -7,15 +7,16 @@ output:
 
 params:
   date: !r Sys.Date()
-  # target.label: "PERF.all"
-  target.label: "PERF09"
+  target.label: "PERF.all"
+  # target.label: "PERF09"
   # features.set: "big5items"
   features.set: "big5composites"
   split.ratio: 0.80
   cv.repeats: 100
   # cv.repeats: 10
-  impute.method: "noimpute"
+  # impute.method: "noimpute"
   # impute.method: "medianImpute"
+  impute.method: "knnImpute"
 
 title: "Job Performance Analysis with
         target = `r params$target.label` and features set = `r params$features.set`"
@@ -38,6 +39,7 @@ libraries <- c("dplyr", "magrittr", "tidyverse"
                , "DataExplorer", "RColorBrewer"
                , "machinelearningtools"
                , "knitr", "pander"
+               , "extrafont"
 )
 sapply(libraries, require, character.only = TRUE)
 
@@ -97,6 +99,9 @@ dataset <- readRDS(dataset.label)
 
 set.seed(seed)
 dataset %<>% nrow %>% sample %>% dataset[.,]
+
+# rerun big5 without covariates
+dataset %<>% select(-COMNAME, -educa, -gender, -LIFE_S_R, -inf, -sd)
 
 ########################################
 # 3.2: Select the features & formula
@@ -219,27 +224,25 @@ models.list <- models.list.name %>% readRDS
 
 training_configuration_number <- models.list[[1]] %>% .$control %>% .$number
 training_configuration_repeats <- models.list[[1]] %>% .$control %>% .$repeats
+
 ```
 
 Training the model on the training set with `r training_configuration_number`-fold cross-validation, repeated  `r training_configuration_repeats` times, yields the following results. Linear regression as benchmark reference is denoted as "lm".
 
 ## 4.1 Training Set Performance
 
-```{r train the model,fig.width=7, fig.height=5, cache=FALSE, echo=FALSE}
+```{r train the model,fig.width=7, fig.height=5, cache=TRUE, echo=FALSE}
 ########################################
-## 4.1 Training Set Performance
 ########################################
 # get model metrics
-models.metrics <- models.list %>% get_model_metrics 
-
-# display Rsquared trainingset performance - table
-# models.metrics$Rsquared.training %>% kable(caption = "training set performance: Rsquared")
+models.metrics <- models.list %>% get_model_metrics
 
 # display RMSE trainingset performance - table
 models.metrics$metric1.training %>% kable(caption = "training set performance: RMSE")
 
 # display RMSE trainingset performance - boxplots
-models.metrics$metric1.resamples.boxplots
+models.metrics$metric1.resamples.boxplots + 
+  theme(text = element_text(family = 'Gill Sans'))
 
 # models.metrics$RMSE.training %>% filter(str_detect(model, "^lm$"))
 rank.lm.training <- which(models.metrics$metric1.training$model == "lm")
@@ -247,6 +250,15 @@ rank.lm.training <- which(models.metrics$metric1.training$model == "lm")
 
 We can see that linear regression ("lm") performs on `r rank.lm.training`th RMSE rank of the selected machine learning models. This result must be validated on the testing set.
 
+```{r training Rsquared, cache=FALSE}
+# display Rsquared trainingset performance - table
+models.metrics$metric2.training %>% kable(caption = "training set performance: Rsquared")
+
+# display Rsquared trainingset performance - boxplots
+models.metrics$metric2.resamples.boxplots +
+  theme(text = element_text(family = 'Gill Sans'))
+
+```
 
 ## 4.2 Testing Set Performance
 
@@ -269,9 +281,12 @@ We can see that linear regression ("lm") performs on `r rank.lm.training`th RMSE
 #   get_model_metrics %>%
 #   .$RMSE.all %>% kable(caption = "training vs. testing set performance: RMSE")
 
-models.metrics$metric1.testing %>% kable(caption = "testing set performance: RMSE")
+# models.metrics$metrics.testing
+models.metrics$metrics.testing %>% kable(caption = "testing set performance: RMSE")
 
-rank.lm.testing <- which(models.metrics$metric1.testing$model == "lm")
+rank.lm.testing <- which(models.metrics$metrics.testing$model == "lm")
+
+
 ```
 
 We had reserved a portion of the original data as testing set to validate the model performance on unseen data. 
@@ -282,11 +297,6 @@ The following table compares all models training set performance with their test
 ```{r testing set benchmark all}
 models.metrics$benchmark.all %>% kable(caption = "training vs. testing set performance: RMSE")
 ```
-
-
-
-
-
 
 
 
