@@ -8,8 +8,8 @@
 # clear the workspace
 rm(list=ls())
 
-# mode <- "new"
-mode <- "old"
+mode <- "new"
+# mode <- "old"
 
 # load libraries
 # devtools::install_github("agilebean/machinelearningtools", force = TRUE)
@@ -24,10 +24,11 @@ libraries <- c("dplyr", "magrittr", "tidyverse"
 )
 sapply(libraries, require, character.only = TRUE)
 
-target.label.list <- c("PERF09", "PERF.all", "TO.all", "LIFE_S_R")
+# target.label.list <- c("PERF09", "PERF.all", "TO.all", "LIFE_S_R")
+target.label.list <- c("PERF09", "PERF.all")
 features.set.list <- c("big5items", "big5composites")
 
-model.permutations.list <- crossing(target_label = target.label.list, 
+model.permutations.list <- crossing(target_label = target.label.list,
                                     features_set = features.set.list)
 
 # nominal <- FALSE # with ordinal as ORDERED factors
@@ -36,52 +37,56 @@ nominal <- TRUE # with ordinal as NOMINAL factor
 seed <- 17
 
 # cross-validation repetitions
+# CV.REPEATS <- 10
 CV.REPEATS <- 100
 
+
 # try first x rows of training set
-TRY.FIRST <- 50
+# TRY.FIRST <- 50
+TRY.FIRST <- NULL
 
 # IMPUTE.METHOD <- NULL
-IMPUTE.METHOD <- "medianImpute"
+IMPUTE.METHOD <- "knnImpute"
+# IMPUTE.METHOD <- "bagImpute"
 
 if (is.null(IMPUTE.METHOD)) {
-  dataset.label <- paste0(c("data/dataset", "rds"), collapse = ".")  
+  dataset.label <- paste0(c("data/dataset", "rds"), collapse = ".")
 } else {
-  dataset.label <- paste0(c("data/dataset.NA", "rds"), collapse = ".")  
+  dataset.label <- paste0(c("data/dataset.NA", "rds"), collapse = ".")
 }
 
 #######################################################################
 # define features
 #######################################################################
 get_features <- function(target_label, features_set, data_set) {
-  
-  data_set %>% 
+
+  data_set %>%
     select(-target_label,
            -starts_with("TO"),
            -starts_with("PERF")
-    ) %>% 
+    ) %>%
     {
       if (features_set == "big5items") {
         # remove composite scores - equivalent to (-nn, -ee, -oo, -aa, -cc)
-        select(., -matches("(oo|cc|ee|aa|nn)$")) 
-        
+        select(., -matches("(oo|cc|ee|aa|nn)$"))
+
       } else if (features_set == "big5composites") {
         # remove Big5 items
         select(., -matches(".*(1|2|3|4|5|6)"))
-        
+
       } else { . }
-    } %>% 
+    } %>%
     names %T>% print
 }
 
 #######################################################################
 # TRAIN model permutations
 #######################################################################
-train_model_permutations <- function(target_label, features_set, 
+train_model_permutations <- function(target_label, features_set,
                                      preprocess_configuration = c("center", "scale"),
                                      impute_method = NULL,
-                                     data_set, algorithm_list, training_configuration, 
-                                     seed = 17, split_ratio = 0.80, 
+                                     data_set, algorithm_list, training_configuration,
+                                     seed = 17, split_ratio = 0.80,
                                      cv_repeats, try_first = NULL
                                      ) {
   # target_label <- "PERF09"
@@ -92,41 +97,42 @@ train_model_permutations <- function(target_label, features_set,
   # algorithm_list <- algorithm.list
   # training_configuration <-trainControl(method = "repeatedcv", number = 10, repeats = CV.REPEATS)
   # impute_method <-  IMPUTE.METHOD
-  # impute_method <- NULL
+  # # impute_method <- NULL
   # split_ratio <- 0.80
-  
+  # try_first <- 50
+
   # define output filename
-  models.list.name <- paste0(c("data/models.list", 
-                               target_label, features_set, 
+  models.list.name <- paste0(c("data/models.list",
+                               target_label, features_set,
                                paste0(cv_repeats, "repeats"),
                                { if (!is.null(impute_method)) paste(impute_method)},
-                               "rds"), 
+                               "rds"),
                              collapse = ".") %T>% print
-  
+
   ########################################
   ## 2.3 Select the target & features
   ########################################
   target_label %>% print
   features_set %>% print
-  
+
   ########################################
   ## 2.4 Split the data
   ########################################
   # shuffle data - short version:
   set.seed(seed)
   dataset <- data_set %>% nrow %>% sample %>% data_set[.,]
-  
+
   # dataset subsetting for tibble: [[
   set.seed(seed)
   training.index <- createDataPartition(dataset[[target_label]], p = split_ratio, list = FALSE)
-  testing.set <- dataset[-training.index, ]
   training.set <- dataset[training.index, ]
-  
+  testing.set <- dataset[-training.index, ]
+
   ########################################
   # 3.2: Select the features & formula
   ########################################
   # define features
-  features <- get_features(target_label, features_set, data_set)
+  features <- get_features(target_label, features_set, dataset)
 
   # define formula
   formula1 <- set_formula(target_label, features)
@@ -135,20 +141,30 @@ train_model_permutations <- function(target_label, features_set,
   # 3.3: Train the models
   ########################################
   models.list <- list()
-  
+
   system.time(
     models.list <- algorithm_list %>%
       map(function(algorithm_label) {
-        train(formula1
-              , method = algorithm_label
-              , data = if (is.null(try_first)) training.set else head(training.set, try_first)
-              , preProcess = preprocess_configuration
-              , trControl = training_configuration
-              , na.action = na.omit
-        )
+
+        if (algorithm_label == "rf") {
+          train(formula1
+                , method = algorithm_label
+                , data = if (is.null(try_first)) training.set else head(training.set, try_first)
+                , preProcess = preprocess_configuration
+                , trControl = training_configuration
+                , importance = TRUE
+          )
+        } else {
+          train(formula1
+                , method = algorithm_label
+                , data = if (is.null(try_first)) training.set else head(training.set, try_first)
+                , preProcess = preprocess_configuration
+                , trControl = training_configuration
+          )
+        }
       }) %>%
-      setNames(algorithm_list) 
-  ) %>% print
+      setNames(algorithm_list)
+  ) %>% beepr::beep()
 
   ########################################
   # 3.4: Postprocess the models
@@ -156,13 +172,13 @@ train_model_permutations <- function(target_label, features_set,
   # add target.label & testing.set to models.list
   models.list$target.label <- target_label
   models.list$testing.set <- testing.set
-  # 
+  #
   # save the models.list
-  if (!is.null(try_first)) {
-    
-    models.list %>% saveRDS(models.list.name) 
+  if (is.null(try_first)) {
+
+    models.list %>% saveRDS(models.list.name)
   }
-  
+
   return(models.list)
 }
 
@@ -179,10 +195,10 @@ algorithm.list <- c(
   ,"glm"
   , "knn"
   , "gbm"
-  # , "rf" 754s/100rep
+  , "rf" # 754s/100rep
   , "ranger"
-  # , "xgbTree" 377s/100rep
-  # , "xgbLinear" 496s/100rep
+  , "xgbTree" # 377s/100rep
+  , "xgbLinear" # 496s/100rep
   , "svmLinear"
   , "svmRadial"
 )
@@ -191,29 +207,31 @@ algorithm.list <- c(
 # MAIN
 #######################################################################
 if (mode == "new") {
-  
+
   if (!is.null(IMPUTE.METHOD)) {
-    
-    dataset.imputed <- dataset %>% 
-      preProcess(method = IMPUTE.METHOD) %>% 
+
+    dataset.imputed <- dataset %>%
+      preProcess(method = IMPUTE.METHOD) %>%
       predict(model.imputed, newdata = dataset) %T>% print
-    
+
     dataset <- dataset.imputed %>% na.omit
   }
-  
+
+  dataset %<>% select(-COMNAME, -educa, -gender, -LIFE_S_R, -inf, -sd)
+
   cluster.new <- clusterOn(detectCores())
-  
+
   time.total <- system.time(
-    result.permutations <- model.permutations.list %>% 
-      pmap(train_model_permutations, 
+    result.permutations <- model.permutations.list %>%
+      pmap(train_model_permutations,
            data_set = dataset,
            impute_method = IMPUTE.METHOD,
            algorithm_list = algorithm.list,
            training_configuration = trainControl(
-             method = "repeatedcv", number = 10, repeats = CV.REPEATS), 
+             method = "repeatedcv", number = 10, repeats = CV.REPEATS),
            cv_repeats = CV.REPEATS,
            try_first = TRY.FIRST
-      ) %>% setNames(algorithm.list)
+      )
   ) %T>% {push_message(.["elapsed"])}
 
   # stop cluster if exists
@@ -221,16 +239,35 @@ if (mode == "new") {
     registerDoSEQ()
     stopCluster(cluster.new)
   }
-  
+
   } else if (mode == "old") {
-    
-    models.list <- get_models_list(model.permutations.list, model_index = 3, 
+
+    models.list <- get_models_list(model.permutations.list, model_index = 3,
                                    impute_method = IMPUTE.METHOD,
                                    cv_repeats = CV.REPEATS)
-    
+
     models.list %>% head(-2) %>% resamples %>% dotplot
 }
 
+
+# model.permutations.list
+#
+# result <- result.permutations[[1]] %T>% print
+# result$rf$terms
+#
+# # target_label <- "PERF.all"
+# target_label <- "PERF09"
+# features_set <- "big5items"
+# # features_set <- "big5composites"
+#
+# models.list.name <- paste0(c("data/models.list",
+#                              target_label, features_set,
+#                              paste0(CV.REPEATS, "repeats"),
+#                              { if (!is.null(IMPUTE.METHOD)) paste(IMPUTE.METHOD)},
+#                              "rds"),
+#                            collapse = ".") %T>% print
+#
+# result %>% saveRDS(models.list.name)
 
 ################################################################################
 # 4. Evaluate Models
@@ -242,13 +279,13 @@ if (mode == "new") {
 # get model (here: first model in model.permutations.list)
 model.index <- 3
 if (mode == "new") {
-  
+
   models.list <- result.permutations[[model.index]]
-  
+
 } else if (mode == "old") {
-  
-  models.list <- get_models_list(model.permutations.list, 
-                                 model_index = model.index, 
+
+  models.list <- get_models_list(model.permutations.list,
+                                 model_index = model.index,
                                  cv_repeats = CV.REPEATS,
                                  impute_method = "noimpute")
 }
@@ -269,7 +306,7 @@ models.list %>% get_model_metrics(palette = "Dark2")
 # RMSE for all models on testing set
 models.metrics$metric1.testing
 # training vs. testing set performance: RMSE
-models.metrics$benchmark.all 
+models.metrics$benchmark.all
 
 ################################################################################
 ################################################################################
@@ -298,14 +335,14 @@ models.metrics$benchmark.all
 ################################################################################
 # 2. unified handling: conditional inline ggplot statements
 #
-#   dataset %>% 
+#   dataset %>%
 #   {
 #     if (conditions1) {
-#       select(., -matches("(oo|cc|ee|aa|nn)$")) 
-#       
+#       select(., -matches("(oo|cc|ee|aa|nn)$"))
+#
 #     } else if (condition2") {
 #       select(., -matches(".*(1|2|3|4|5|6)"))
-#       
+#
 #     } else { . }
 #   } %>% ...
 #
@@ -313,9 +350,9 @@ models.metrics$benchmark.all
 # 3. quick prototyping: parametrized training set size
 #
 #   main_function(..., try_first = NULL) {
-#     train(..., 
+#     train(...,
 #           data = if (is.null(try_first)) training.set else head(training.set, try_first),
-#           ...) 
+#           ...)
 #   }
 #
 ################################################################################
@@ -330,7 +367,7 @@ models.metrics$benchmark.all
 #                     testing_set = NULL, ...) {
 #     target.label <- if (!is.null(target_label)) target_label else models_list$target.label
 #     testing.set <- if (!is.null(testing_set)) testing_set else models_list$testing.set
-#     
+#
 #     RMSE.testing <- get_rmse_testing(target.label, models.list, testing.set)
 #   }
 #
@@ -345,7 +382,7 @@ models.metrics$benchmark.all
 #   # , "knn"
 # )
 # stop cluster if exists
-# if (nrow(showConnections()) != 0) stopCluster(cluster.new) 
+# if (nrow(showConnections()) != 0) stopCluster(cluster.new)
 #
 ################################################################################
 
