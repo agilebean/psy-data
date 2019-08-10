@@ -217,6 +217,7 @@ if (mode == "new") {
     dataset <- dataset.imputed %>% na.omit
   }
 
+  # rerun big5 without covariates
   dataset %<>% select(-COMNAME, -educa, -gender, -LIFE_S_R, -inf, -sd)
 
   cluster.new <- clusterOn(detectCores())
