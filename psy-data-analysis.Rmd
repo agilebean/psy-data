@@ -33,13 +33,13 @@ options(digits = 3)
 
 # devtools::install_github("agilebean/machinelearningtools", force = TRUE)
 # load libraries
-libraries <- c("dplyr", "magrittr", "tidyverse"
+libraries <- c("dplyr", "magrittr"
                , "sjlabelled" # read SPSS
                , "caret", "doParallel"
                , "DataExplorer", "RColorBrewer"
                , "machinelearningtools"
                , "knitr", "pander"
-               , "extrafont"
+               , "tidyverse"
 )
 sapply(libraries, require, character.only = TRUE)
 
@@ -53,6 +53,9 @@ if (params$impute.method == "noimpute") {
 nominal <- TRUE # with ordinal as NOMINAL factor
 
 seed <- 17
+
+WIDTH.varimp <- if (features.set == "big5items") 8 else 4
+HEIGHT.varimp <- if (features.set == "big5items") 8 else 2
 
 get_features <- function(target_label, features_set, data_set) {
   
@@ -183,14 +186,14 @@ algorithm.list <- c(
   "lm",
   "knn",
   "gbm",
-  # "rf",
+  "rf",
   "ranger",
-  # "xgbTree",
-  # "xgbLinear",
+  "xgbTree",
+  "XgbLinear",
   "svmLinear",
   "svmRadial"
 )
-  
+
 ```
 
 The machine learning models used in the benchmarking are:
@@ -236,13 +239,15 @@ Training the model on the training set with `r training_configuration_number`-fo
 ########################################
 # get model metrics
 models.metrics <- models.list %>% get_model_metrics
+models.list %<>% purrr::list_modify(target.label = NULL, testing.set = NULL)
 
 # display RMSE trainingset performance - table
 models.metrics$metric1.training %>% kable(caption = "training set performance: RMSE")
 
 # display RMSE trainingset performance - boxplots
-models.metrics$metric1.resamples.boxplots + 
-  theme(text = element_text(family = 'Gill Sans'))
+models.metrics$metric1.resamples.boxplots
+# models.metrics$metric1.resamples.boxplots + 
+#   theme(text = element_text(family = 'Gill Sans'))
 
 # models.metrics$RMSE.training %>% filter(str_detect(model, "^lm$"))
 rank.lm.training <- which(models.metrics$metric1.training$model == "lm")
@@ -255,8 +260,9 @@ We can see that linear regression ("lm") performs on `r rank.lm.training`th RMSE
 models.metrics$metric2.training %>% kable(caption = "training set performance: Rsquared")
 
 # display Rsquared trainingset performance - boxplots
-models.metrics$metric2.resamples.boxplots +
-  theme(text = element_text(family = 'Gill Sans'))
+models.metrics$metric2.resamples.boxplots
+# models.metrics$metric2.resamples.boxplots +
+#   theme(text = element_text(family = 'Gill Sans'))
 
 ```
 
@@ -298,6 +304,54 @@ The following table compares all models training set performance with their test
 models.metrics$benchmark.all %>% kable(caption = "training vs. testing set performance: RMSE")
 ```
 
+## 4.4 Variable Importance
+The variable importance can be calculated for linear regression, gradient boosting machines and random forests only. The scores are normalized with 100 for the maximum variable importance among all predictors. 
 
+``` {r variable importance, fig.width=WIDTH.varimp, fig.height=HEIGHT.varimp, cache=TRUE}
+models.varimp <- models.list %>% head(-5) %>% list_modify(knn = NULL)
+
+visualize_importance <- function (importance_object) {
+
+  if (class(importance_object) == "varImp.train") {
+    importance_object %<>% .$importance
+  }
+  if (!hasName(importance_object, "rowname")) {
+    importance_object %<>% rownames_to_column()
+  }
+
+  importance_object %>%
+    setNames(c("variable", "Importance")) %>%
+    ggplot(data = ., aes(x = reorder(variable, Importance), y = Importance)) +
+    theme_minimal() +
+    geom_bar(stat = "identity", fill = "#114151") +
+    coord_flip() +
+    theme(axis.title = element_text(size = 12),
+          axis.text = element_text(size = 12)) +
+    scale_y_continuous(expand = c(0, 0), limits = c(0, 102)) +
+    xlab("item") + ylab("variable importance")
+}
+
+library(gbm)
+tables.varimp <- models.varimp %>% map(~varImp(.))
+
+varimp.plots <- models.varimp %>%
+  map(function(model) {
+    require(gbm)
+    model %>% varImp %>% visualize_importance()
+  })
+
+tables.varimp$lm
+varimp.plots$lm
+
+tables.varimp$glm
+varimp.plots$glm
+
+tables.varimp$gbm
+varimp.plots$gbm
+
+tables.varimp$rf
+varimp.plots$rf
+
+```
 
 

@@ -14,13 +14,14 @@ mode <- "new"
 # load libraries
 # devtools::install_github("agilebean/machinelearningtools", force = TRUE)
 
-libraries <- c("dplyr", "magrittr", "tidyverse"
+libraries <- c("magrittr"
                , "sjlabelled" # read SPSS
                , "caret", "doParallel"
                , "RColorBrewer"
                , "machinelearningtools"
                , "knitr"
                , "RPushbullet", "beepr"
+               , "tidyverse"
 )
 sapply(libraries, require, character.only = TRUE)
 
@@ -46,8 +47,8 @@ CV.REPEATS <- 100
 TRY.FIRST <- NULL
 
 # IMPUTE.METHOD <- NULL
-IMPUTE.METHOD <- "knnImpute"
-# IMPUTE.METHOD <- "bagImpute"
+# IMPUTE.METHOD <- "knnImpute"
+IMPUTE.METHOD <- "bagImpute"
 
 if (is.null(IMPUTE.METHOD)) {
   dataset.label <- paste0(c("data/dataset", "rds"), collapse = ".")
@@ -208,17 +209,20 @@ algorithm.list <- c(
 #######################################################################
 if (mode == "new") {
 
+  # rerun big5 without covariates
+  dataset %<>% select(-COMNAME, -educa, -gender, -LIFE_S_R, -inf, -sd)
+
+  # remove turnover (TOxx) variables
+  dataset %<>% select(-starts_with("TO"))
+
   if (!is.null(IMPUTE.METHOD)) {
 
     dataset.imputed <- dataset %>%
       preProcess(method = IMPUTE.METHOD) %>%
-      predict(model.imputed, newdata = dataset) %T>% print
+      predict(newdata = dataset) %T>% print
 
-    dataset <- dataset.imputed %>% na.omit
+    dataset <- dataset.imputed %>% na.omit %T>% print
   }
-
-  # rerun big5 without covariates
-  dataset %<>% select(-COMNAME, -educa, -gender, -LIFE_S_R, -inf, -sd)
 
   cluster.new <- clusterOn(detectCores())
 
@@ -243,42 +247,31 @@ if (mode == "new") {
 
   } else if (mode == "old") {
 
-    models.list <- get_models_list(model.permutations.list, model_index = 3,
+    # get model in model.permutations.list by model index
+    models.list <- get_models_list(model.permutations.list, model_index = 1,
                                    impute_method = IMPUTE.METHOD,
                                    cv_repeats = CV.REPEATS)
 
-    models.list %>% head(-2) %>% resamples %>% dotplot
+    models.list %>%
+      purrr::list_modify(target.label = NULL, testing.set = NULL) %>%
+      resamples %>% dotplot
 }
 
-
-# model.permutations.list
-#
-# result <- result.permutations[[1]] %T>% print
-# result$rf$terms
-#
-# # target_label <- "PERF.all"
-# target_label <- "PERF09"
-# features_set <- "big5items"
-# # features_set <- "big5composites"
-#
-# models.list.name <- paste0(c("data/models.list",
-#                              target_label, features_set,
-#                              paste0(CV.REPEATS, "repeats"),
-#                              { if (!is.null(IMPUTE.METHOD)) paste(IMPUTE.METHOD)},
-#                              "rds"),
-#                            collapse = ".") %T>% print
-#
-# result %>% saveRDS(models.list.name)
 
 ################################################################################
 # 4. Evaluate Models
 ################################################################################
 
+model.metrics <- models.list %>% get_model_metrics
+model.metrics$metric1.resamples.boxplots  +
+  theme(text = element_text(family = 'Gill Sans'))
+
 ########################################
 ## 4.1 Training Set Performance
 ########################################
-# get model (here: first model in model.permutations.list)
-model.index <- 3
+# get model in model.permutations.list by model index
+model.index <- 1
+
 if (mode == "new") {
 
   models.list <- result.permutations[[model.index]]
@@ -288,7 +281,7 @@ if (mode == "new") {
   models.list <- get_models_list(model.permutations.list,
                                  model_index = model.index,
                                  cv_repeats = CV.REPEATS,
-                                 impute_method = "noimpute")
+                                 impute_method = "bagImpute")
 }
 
 # training set performance
@@ -305,7 +298,7 @@ models.list %>% get_model_metrics(palette = "Dark2")
 ## 4.2 Testing Set Performance
 ########################################
 # RMSE for all models on testing set
-models.metrics$metric1.testing
+models.metrics$metrics.testing
 # training vs. testing set performance: RMSE
 models.metrics$benchmark.all
 
