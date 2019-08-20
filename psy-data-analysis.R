@@ -37,6 +37,19 @@ nominal <- TRUE # with ordinal as NOMINAL factor
 
 seed <- 17
 
+# cross-validation repetitions
+CV.REPEATS <- 2
+# CV.REPEATS <- 10
+# CV.REPEATS <- 100
+
+# try first x rows of training set
+# TRY.FIRST <- NULL
+TRY.FIRST <- 50
+
+
+IMPUTE.METHOD <- NULL
+# IMPUTE.METHOD <- "knnImpute"
+# IMPUTE.METHOD <- "bagImpute"
 
 #######################################################################
 # define features
@@ -59,7 +72,7 @@ get_features <- function(target_label, features_set, data_set) {
 
       } else { . }
     } %>%
-    names %T>% print
+    names
 }
 
 # define output filename
@@ -68,7 +81,7 @@ output_filename <- function(prefix, target_label, features_set,
   paste0(c(prefix,
            target_label, features_set,
            paste0(cv_repeats, "repeats"),
-           { if (!is.null(impute_method)) paste(impute_method)},
+           { if (!is.null(impute_method)) paste(impute_method) else "noimpute"},
            "rds"),
          collapse = ".") %T>% print
 }
@@ -197,22 +210,14 @@ remove_unused_variables <- function(data) {
 #######################################################################
 if (mode == "new") {
 
-  # cross-validation repetitions
-  CV.REPEATS <- 2
-  # CV.REPEATS <- 10
-  # CV.REPEATS <- 100
-
-  # try first x rows of training set
-  TRY.FIRST <- 50
-  # TRY.FIRST <- NULL
-
-  # IMPUTE.METHOD <- NULL
-  # IMPUTE.METHOD <- "knnImpute"
-  IMPUTE.METHOD <- "bagImpute"
-
   # repeated cv
   training.configuration <- trainControl(
     method = "repeatedcv", number = 10, repeats = CV.REPEATS)
+
+  # prefix
+  prefix.models.list <- "data/models.list"
+  # prefix.models.list <- "data/testruns/models.list"
+
 
   ###################################################
   # 1. Data Acquistion - includes 2.2 Data Cleaning
@@ -222,7 +227,6 @@ if (mode == "new") {
   # script-specific removal of unused variables
   data.new <- data.raw %>% remove_unused_variables %T>% print
 
-  data.new %<>% .[1:100,]
   if (!is.null(IMPUTE.METHOD)) {
 
     system.time(
@@ -246,14 +250,12 @@ if (mode == "new") {
     model.permutations.list <- model.permutations.labels %>%
       pmap(function(target_label, features_labels) {
 
-        prefix.models.list <- "data/testruns/models.list"
-
         models.list.name <- output_filename(
           prefix.models.list, target_label, features_labels, CV.REPEATS, IMPUTE.METHOD)
 
         features <- get_features(target_label, features_labels, dataset)
 
-        print(c(features_labels, target_label))
+        print(c(target_label, features_labels))
 
         train_model(
           target_label = target_label,
@@ -276,20 +278,6 @@ if (mode == "new") {
     stopCluster(cluster.new)
   }
 
-} else if (mode == "old") {
-
-  # get model in model.permutations.labels by model index
-  model.permutations.list <- get_models_list(
-    model.permutations.labels,
-    model_index = 1,
-    prefix = prefix.models.list,
-    impute_method = IMPUTE.METHOD,
-    cv_repeats = CV.REPEATS
-  )
-
-  models.list %>%
-    purrr::list_modify(target.label = NULL, testing.set = NULL) %>%
-    resamples %>% dotplot
 }
 
 
@@ -297,37 +285,41 @@ if (mode == "new") {
 # 4. Evaluate Models
 ################################################################################
 
-model.permutations.list <- get_models_list(model.permutations.labels, model_index = 1,
-                                           impute_method = IMPUTE.METHOD,
-                                           cv_repeats = CV.REPEATS)
-
-model.metrics <- models.list %>% get_model_metrics
-model.metrics$metric1.resamples.boxplots  +
-  theme(text = element_text(family = 'Gill Sans'))
-
 ########################################
 ## 4.1 Training Set Performance
 ########################################
 # get model in model.permutations.list by model index
-model.index <- 1
-
 if (mode == "new") {
 
-  models.list <- result.permutations[[model.index]]
+    models.list <- result.permutations[[model.index]]
 
 } else if (mode == "old") {
 
-  models.list <- get_models_list(model.permutations.list,
-                                 model_index = model.index,
-                                 cv_repeats = CV.REPEATS,
-                                 impute_method = "knnImpute")
+  # get model for first permutation
+  model.index = 1
+  model.index.labels <- model.permutations.labels %>% .[model.index,] %T>% print
+  target_label <- model.index.labels$target_label
+  features_labels <- model.index.labels$features_labels
+
+  # prefix
+  prefix.models.list <- "data/testruns/models.list"
+  models.list.name <- output_filename(
+    prefix.models.list, target_label, features_labels, CV.REPEATS, IMPUTE.METHOD)
+
+  # get model in model.permutations.labels by model index
+  models.list <- readRDS(models.list.name)
+
+  models.list %>%
+    purrr::list_modify(target.label = NULL, testing.set = NULL) %>%
+    resamples %>% dotplot
 }
 
 # training set performance
 models.metrics <- models.list %>% get_model_metrics %T>% print
+# models.metrics <- models.list %>% get_model_metrics(palette = "Dark2") %T>% print
 
-# set color palettes (default = "Set1")
-models.list %>% get_model_metrics(palette = "Dark2")
+model.metrics$metric1.resamples.boxplots  +
+  theme(text = element_text(family = 'Gill Sans'))
 
 
 ########################################
