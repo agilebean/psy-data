@@ -38,18 +38,21 @@ nominal <- TRUE # with ordinal as NOMINAL factor
 seed <- 17
 
 # cross-validation repetitions
-CV.REPEATS <- 2
-# CV.REPEATS <- 10
+# CV.REPEATS <- 2
+CV.REPEATS <- 10
 # CV.REPEATS <- 100
 
 # try first x rows of training set
-# TRY.FIRST <- NULL
-TRY.FIRST <- 50
-
+TRY.FIRST <- NULL
+# TRY.FIRST <- 50
 
 IMPUTE.METHOD <- NULL
 # IMPUTE.METHOD <- "knnImpute"
 # IMPUTE.METHOD <- "bagImpute"
+
+# prefix
+PREFIX <- "data/models.list"
+# PREFIX <- "data/testruns/models.list"
 
 #######################################################################
 # define features
@@ -214,11 +217,6 @@ if (mode == "new") {
   training.configuration <- trainControl(
     method = "repeatedcv", number = 10, repeats = CV.REPEATS)
 
-  # prefix
-  prefix.models.list <- "data/models.list"
-  # prefix.models.list <- "data/testruns/models.list"
-
-
   ###################################################
   # 1. Data Acquistion - includes 2.2 Data Cleaning
   ###################################################
@@ -251,7 +249,7 @@ if (mode == "new") {
       pmap(function(target_label, features_labels) {
 
         models.list.name <- output_filename(
-          prefix.models.list, target_label, features_labels, CV.REPEATS, IMPUTE.METHOD)
+          PREFIX, target_label, features_labels, CV.REPEATS, IMPUTE.METHOD)
 
         features <- get_features(target_label, features_labels, dataset)
 
@@ -273,7 +271,7 @@ if (mode == "new") {
   ) %T>% { push_message(.["elapsed"]) }
 
   # stop cluster if exists
-  if (nrow(showConnections()) != 0) {
+  if (nrow(showConnections()) !=  0) {
     registerDoSEQ()
     stopCluster(cluster.new)
   }
@@ -302,9 +300,8 @@ if (mode == "new") {
   features_labels <- model.index.labels$features_labels
 
   # prefix
-  prefix.models.list <- "data/testruns/models.list"
   models.list.name <- output_filename(
-    prefix.models.list, target_label, features_labels, CV.REPEATS, IMPUTE.METHOD)
+    PREFIX, target_label, features_labels, CV.REPEATS, IMPUTE.METHOD)
 
   # get model in model.permutations.labels by model index
   models.list <- readRDS(models.list.name)
@@ -318,7 +315,7 @@ if (mode == "new") {
 models.metrics <- models.list %>% get_model_metrics %T>% print
 # models.metrics <- models.list %>% get_model_metrics(palette = "Dark2") %T>% print
 
-model.metrics$metric1.resamples.boxplots  +
+models.metrics$metric1.resamples.boxplots  +
   theme(text = element_text(family = 'Gill Sans'))
 
 
