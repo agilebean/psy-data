@@ -26,35 +26,17 @@ libraries <- c("magrittr"
 sapply(libraries, require, character.only = TRUE)
 
 # target.label.list <- c("PERF09", "PERF.all", "TO.all", "LIFE_S_R")
-target.label.list <- c("PERF09", "PERF.all")
-features.set.list <- c("big5items", "big5composites")
+target.label.list <- c("PERF07", "PERF08", "PERF09")
+features.labels.list <- c("big5items", "big5composites")
 
-model.permutations.list <- crossing(target_label = target.label.list,
-                                    features_set = features.set.list)
+model.permutations.labels <- crossing(target_label = target.label.list,
+                                      features_labels = features.labels.list)
 
 # nominal <- FALSE # with ordinal as ORDERED factors
 nominal <- TRUE # with ordinal as NOMINAL factor
 
 seed <- 17
 
-# cross-validation repetitions
-# CV.REPEATS <- 10
-CV.REPEATS <- 100
-
-
-# try first x rows of training set
-# TRY.FIRST <- 50
-TRY.FIRST <- NULL
-
-# IMPUTE.METHOD <- NULL
-# IMPUTE.METHOD <- "knnImpute"
-IMPUTE.METHOD <- "bagImpute"
-
-if (is.null(IMPUTE.METHOD)) {
-  dataset.label <- paste0(c("data/dataset", "rds"), collapse = ".")
-} else {
-  dataset.label <- paste0(c("data/dataset.NA", "rds"), collapse = ".")
-}
 
 #######################################################################
 # define features
@@ -80,41 +62,34 @@ get_features <- function(target_label, features_set, data_set) {
     names %T>% print
 }
 
+# define output filename
+output_filename <- function(prefix, target_label, features_set,
+                            cv_repeats, impute_method) {
+  paste0(c(prefix,
+           target_label, features_set,
+           paste0(cv_repeats, "repeats"),
+           { if (!is.null(impute_method)) paste(impute_method)},
+           "rds"),
+         collapse = ".") %T>% print
+}
+
 #######################################################################
 # TRAIN model permutations
 #######################################################################
-train_model_permutations <- function(target_label, features_set,
-                                     preprocess_configuration = c("center", "scale"),
-                                     impute_method = NULL,
-                                     data_set, algorithm_list, training_configuration,
-                                     seed = 17, split_ratio = 0.80,
-                                     cv_repeats, try_first = NULL
-                                     ) {
-  # target_label <- "PERF09"
-  # features_set <- "big5items"
-  # preprocess_configuration = c("center", "scale")
-  # cv_repeats <- 10
-  # data_set <- dataset
-  # algorithm_list <- algorithm.list
-  # training_configuration <-trainControl(method = "repeatedcv", number = 10, repeats = CV.REPEATS)
-  # impute_method <-  IMPUTE.METHOD
-  # # impute_method <- NULL
-  # split_ratio <- 0.80
-  # try_first <- 50
-
-  # define output filename
-  models.list.name <- paste0(c("data/models.list",
-                               target_label, features_set,
-                               paste0(cv_repeats, "repeats"),
-                               { if (!is.null(impute_method)) paste(impute_method)},
-                               "rds"),
-                             collapse = ".") %T>% print
+train_model <- function(target_label, features_labels,
+                        preprocess_configuration = c("center", "scale"),
+                        impute_method = NULL,
+                        data_set, algorithm_list, training_configuration,
+                        seed = 17, split_ratio = 0.80,
+                        cv_repeats, try_first = NULL,
+                        models_list_name = NULL
+) {
 
   ########################################
   ## 2.3 Select the target & features
   ########################################
   target_label %>% print
-  features_set %>% print
+  features_labels %>% print
 
   ########################################
   ## 2.4 Split the data
@@ -122,6 +97,11 @@ train_model_permutations <- function(target_label, features_set,
   # shuffle data - short version:
   set.seed(seed)
   dataset <- data_set %>% nrow %>% sample %>% data_set[.,]
+
+  # select variables
+  dataset %<>% select(target_label, features_labels) %>%
+    # for non-imputed data, #NA can differ for different targets
+    na.omit
 
   # dataset subsetting for tibble: [[
   set.seed(seed)
@@ -132,11 +112,9 @@ train_model_permutations <- function(target_label, features_set,
   ########################################
   # 3.2: Select the features & formula
   ########################################
-  # define features
-  features <- get_features(target_label, features_set, dataset)
 
   # define formula
-  formula1 <- set_formula(target_label, features)
+  formula1 <- set_formula(target_label, features_labels)
 
   ########################################
   # 3.3: Train the models
@@ -168,25 +146,23 @@ train_model_permutations <- function(target_label, features_set,
   ) %>% beepr::beep()
 
   ########################################
-  # 3.4: Postprocess the models
+  # Postprocess the models
   ########################################
   # add target.label & testing.set to models.list
   models.list$target.label <- target_label
   models.list$testing.set <- testing.set
   #
   # save the models.list
-  if (is.null(try_first)) {
+  if (is.null(try_first) & !is.null(models_list_name)) {
 
-    models.list %>% saveRDS(models.list.name)
+    models.list %>% saveRDS(models_list_name)
+
+    print(paste("model training results saved in", models_list_name))
   }
 
   return(models.list)
 }
 
-#######################################################################
-# 1. Data Acquistion - includes 2.2 Data Cleaning
-#######################################################################
-dataset <- readRDS(dataset.label) %T>% print
 
 ########################################
 # 3.1: Select the models
@@ -204,40 +180,95 @@ algorithm.list <- c(
   , "svmRadial"
 )
 
+# script-specific implementation
+remove_unused_variables <- function(data) {
+
+  data %>%
+    # rerun big5 without covariates
+    select(-COMNAME, -educa, -gender, -LIFE_S_R, -inf, -sd) %>%
+    # remove turnover (TOxx) variables
+    select(-starts_with("TO")) %>%
+    # remove performance composite index
+    select(-PERF.all)
+}
+
 #######################################################################
 # MAIN
 #######################################################################
 if (mode == "new") {
 
-  # rerun big5 without covariates
-  dataset %<>% select(-COMNAME, -educa, -gender, -LIFE_S_R, -inf, -sd)
+  # cross-validation repetitions
+  CV.REPEATS <- 2
+  # CV.REPEATS <- 10
+  # CV.REPEATS <- 100
 
-  # remove turnover (TOxx) variables
-  dataset %<>% select(-starts_with("TO"))
+  # try first x rows of training set
+  TRY.FIRST <- 50
+  # TRY.FIRST <- NULL
 
+  # IMPUTE.METHOD <- NULL
+  # IMPUTE.METHOD <- "knnImpute"
+  IMPUTE.METHOD <- "bagImpute"
+
+  # repeated cv
+  training.configuration <- trainControl(
+    method = "repeatedcv", number = 10, repeats = CV.REPEATS)
+
+  ###################################################
+  # 1. Data Acquistion - includes 2.2 Data Cleaning
+  ###################################################
+  dataset.label <- "data/data.raw.rds" %T>% print
+  data.raw <- readRDS(dataset.label)
+  # script-specific removal of unused variables
+  data.new <- data.raw %>% remove_unused_variables %T>% print
+
+  data.new %<>% .[1:100,]
   if (!is.null(IMPUTE.METHOD)) {
 
-    dataset.imputed <- dataset %>%
-      preProcess(method = IMPUTE.METHOD) %>%
-      predict(newdata = dataset) %T>% print
+    system.time(
+      # tricky tricky: predict throws ERROR (variable is of class NULL)
+      # if factors contain NA > remove_unused_variables
+      dataset.imputed <- data.new %>%
+        preProcess(method = IMPUTE.METHOD) %>%
+        predict(newdata = data.new)
+    ) %T>% print
+    dataset <- dataset.imputed %>% na.omit
 
-    dataset <- dataset.imputed %>% na.omit %T>% print
+  } else {
+    # script-specific removal of unused variables
+    dataset <- data.new %>% na.omit %T>% print
   }
 
   cluster.new <- clusterOn(detectCores())
 
   time.total <- system.time(
-    result.permutations <- model.permutations.list %>%
-      pmap(train_model_permutations,
-           data_set = dataset,
-           impute_method = IMPUTE.METHOD,
-           algorithm_list = algorithm.list,
-           training_configuration = trainControl(
-             method = "repeatedcv", number = 10, repeats = CV.REPEATS),
-           cv_repeats = CV.REPEATS,
-           try_first = TRY.FIRST
-      )
-  ) %T>% {push_message(.["elapsed"])}
+    ############ START
+    model.permutations.list <- model.permutations.labels %>%
+      pmap(function(target_label, features_labels) {
+
+        prefix.models.list <- "data/testruns/models.list"
+
+        models.list.name <- output_filename(
+          prefix.models.list, target_label, features_labels, CV.REPEATS, IMPUTE.METHOD)
+
+        features <- get_features(target_label, features_labels, dataset)
+
+        print(c(features_labels, target_label))
+
+        train_model(
+          target_label = target_label,
+          features = features,
+          data_set = dataset,
+          impute_method = IMPUTE.METHOD,
+          algorithm_list = algorithm.list,
+          training_configuration = training.configuration,
+          cv_repeats = CV.REPEATS,
+          try_first = TRY.FIRST,
+          models_list_name = models.list.name
+        )
+      })
+    ############ END
+  ) %T>% { push_message(.["elapsed"]) }
 
   # stop cluster if exists
   if (nrow(showConnections()) != 0) {
@@ -245,22 +276,30 @@ if (mode == "new") {
     stopCluster(cluster.new)
   }
 
-  } else if (mode == "old") {
+} else if (mode == "old") {
 
-    # get model in model.permutations.list by model index
-    models.list <- get_models_list(model.permutations.list, model_index = 1,
-                                   impute_method = IMPUTE.METHOD,
-                                   cv_repeats = CV.REPEATS)
+  # get model in model.permutations.labels by model index
+  model.permutations.list <- get_models_list(
+    model.permutations.labels,
+    model_index = 1,
+    prefix = prefix.models.list,
+    impute_method = IMPUTE.METHOD,
+    cv_repeats = CV.REPEATS
+  )
 
-    models.list %>%
-      purrr::list_modify(target.label = NULL, testing.set = NULL) %>%
-      resamples %>% dotplot
+  models.list %>%
+    purrr::list_modify(target.label = NULL, testing.set = NULL) %>%
+    resamples %>% dotplot
 }
 
 
 ################################################################################
 # 4. Evaluate Models
 ################################################################################
+
+model.permutations.list <- get_models_list(model.permutations.labels, model_index = 1,
+                                           impute_method = IMPUTE.METHOD,
+                                           cv_repeats = CV.REPEATS)
 
 model.metrics <- models.list %>% get_model_metrics
 model.metrics$metric1.resamples.boxplots  +
@@ -281,7 +320,7 @@ if (mode == "new") {
   models.list <- get_models_list(model.permutations.list,
                                  model_index = model.index,
                                  cv_repeats = CV.REPEATS,
-                                 impute_method = "bagImpute")
+                                 impute_method = "knnImpute")
 }
 
 # training set performance
@@ -290,9 +329,6 @@ models.metrics <- models.list %>% get_model_metrics %T>% print
 # set color palettes (default = "Set1")
 models.list %>% get_model_metrics(palette = "Dark2")
 
-# # get model comparison
-# models.list %>% head(-2) %>% resamples %>% dotplot
-# models.list %>% head(-2) %>% resamples %>% bwplot
 
 ########################################
 ## 4.2 Testing Set Performance
