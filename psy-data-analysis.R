@@ -25,12 +25,20 @@ libraries <- c("magrittr"
 )
 sapply(libraries, require, character.only = TRUE)
 
-# target.label.list <- c("PERF09", "PERF.all", "TO.all", "LIFE_S_R")
-target.label.list <- c("PERF07", "PERF08", "PERF09")
-features.labels.list <- c("big5items", "big5composites")
+target.label.list <- c("PERF08", "PERF09")
+# target.label.list <- c("PERF09")
+features.set.labels.list <- c("big5items", "big5composites")
+# features.set.labels.list <- c("big5composites")
 
-model.permutations.labels <- crossing(target_label = target.label.list,
-                                      features_labels = features.labels.list)
+model.permutations.labels <- crossing(
+  target_label = target.label.list,
+  features_set_label = features.set.labels.list
+  )
+
+model.permutation.string <- model.permutations.labels %>%
+  pmap_chr(function(target_label, features_set_label) {
+    paste(target_label, features_set_label, sep = "-")
+  })
 
 # nominal <- FALSE # with ordinal as ORDERED factors
 nominal <- TRUE # with ordinal as NOMINAL factor
@@ -39,8 +47,8 @@ seed <- 17
 
 # cross-validation repetitions
 # CV.REPEATS <- 2
-CV.REPEATS <- 10
-# CV.REPEATS <- 100
+# CV.REPEATS <- 10
+CV.REPEATS <- 100
 
 # try first x rows of training set
 TRY.FIRST <- NULL
@@ -57,19 +65,19 @@ PREFIX <- "data/models.list"
 #######################################################################
 # define features
 #######################################################################
-get_features <- function(target_label, features_set, data_set) {
+get_features <- function(target_label, features_set_label, data) {
 
-  data_set %>%
+  data %>%
     select(-target_label,
            -starts_with("TO"),
            -starts_with("PERF")
     ) %>%
     {
-      if (features_set == "big5items") {
+      if (features_set_label == "big5items") {
         # remove composite scores - equivalent to (-nn, -ee, -oo, -aa, -cc)
         select(., -matches("(oo|cc|ee|aa|nn)$"))
 
-      } else if (features_set == "big5composites") {
+      } else if (features_set_label == "big5composites") {
         # remove Big5 items
         select(., -matches(".*(1|2|3|4|5|6)"))
 
@@ -78,115 +86,15 @@ get_features <- function(target_label, features_set, data_set) {
     names
 }
 
-# define output filename
-output_filename <- function(prefix, target_label, features_set,
-                            cv_repeats, impute_method) {
-  paste0(c(prefix,
-           target_label, features_set,
-           paste0(cv_repeats, "repeats"),
-           { if (!is.null(impute_method)) paste(impute_method) else "noimpute"},
-           "rds"),
-         collapse = ".") %T>% print
-}
-
-#######################################################################
-# TRAIN model permutations
-#######################################################################
-train_model <- function(target_label, features_labels,
-                        preprocess_configuration = c("center", "scale"),
-                        impute_method = NULL,
-                        data_set, algorithm_list, training_configuration,
-                        seed = 17, split_ratio = 0.80,
-                        cv_repeats, try_first = NULL,
-                        models_list_name = NULL
-) {
-
-  ########################################
-  ## 2.3 Select the target & features
-  ########################################
-  target_label %>% print
-  features_labels %>% print
-
-  ########################################
-  ## 2.4 Split the data
-  ########################################
-  # shuffle data - short version:
-  set.seed(seed)
-  dataset <- data_set %>% nrow %>% sample %>% data_set[.,]
-
-  # select variables
-  dataset %<>% select(target_label, features_labels) %>%
-    # for non-imputed data, #NA can differ for different targets
-    na.omit
-
-  # dataset subsetting for tibble: [[
-  set.seed(seed)
-  training.index <- createDataPartition(dataset[[target_label]], p = split_ratio, list = FALSE)
-  training.set <- dataset[training.index, ]
-  testing.set <- dataset[-training.index, ]
-
-  ########################################
-  # 3.2: Select the features & formula
-  ########################################
-
-  # define formula
-  formula1 <- set_formula(target_label, features_labels)
-
-  ########################################
-  # 3.3: Train the models
-  ########################################
-  models.list <- list()
-
-  system.time(
-    models.list <- algorithm_list %>%
-      map(function(algorithm_label) {
-
-        if (algorithm_label == "rf") {
-          train(formula1
-                , method = algorithm_label
-                , data = if (is.null(try_first)) training.set else head(training.set, try_first)
-                , preProcess = preprocess_configuration
-                , trControl = training_configuration
-                , importance = TRUE
-          )
-        } else {
-          train(formula1
-                , method = algorithm_label
-                , data = if (is.null(try_first)) training.set else head(training.set, try_first)
-                , preProcess = preprocess_configuration
-                , trControl = training_configuration
-          )
-        }
-      }) %>%
-      setNames(algorithm_list)
-  ) %>% beepr::beep()
-
-  ########################################
-  # Postprocess the models
-  ########################################
-  # add target.label & testing.set to models.list
-  models.list$target.label <- target_label
-  models.list$testing.set <- testing.set
-  #
-  # save the models.list
-  if (is.null(try_first) & !is.null(models_list_name)) {
-
-    models.list %>% saveRDS(models_list_name)
-
-    print(paste("model training results saved in", models_list_name))
-  }
-
-  return(models.list)
-}
-
 
 ########################################
 # 3.1: Select the models
 ########################################
 algorithm.list <- c(
   "lm"
-  ,"glm"
+  # ,"glm"
   , "knn"
+  , "kknn"
   , "gbm"
   , "rf" # 754s/100rep
   , "ranger"
@@ -215,7 +123,11 @@ if (mode == "new") {
 
   # repeated cv
   training.configuration <- trainControl(
-    method = "repeatedcv", number = 10, repeats = CV.REPEATS)
+    method = "repeatedcv", number = 10
+    , repeats = CV.REPEATS
+    , savePredictions = "final",
+    # , returnResamp = "all"
+    )
 
   ###################################################
   # 1. Data Acquistion - includes 2.2 Data Cleaning
@@ -237,8 +149,8 @@ if (mode == "new") {
     dataset <- dataset.imputed %>% na.omit
 
   } else {
-    # script-specific removal of unused variables
-    dataset <- data.new %>% na.omit %T>% print
+
+    dataset <- data.new %T>% print
   }
 
   cluster.new <- clusterOn(detectCores())
@@ -246,19 +158,23 @@ if (mode == "new") {
   time.total <- system.time(
     ############ START
     model.permutations.list <- model.permutations.labels %>%
-      pmap(function(target_label, features_labels) {
+
+      pmap(function(target_label, features_set_label) {
 
         models.list.name <- output_filename(
-          PREFIX, target_label, features_labels, CV.REPEATS, IMPUTE.METHOD)
+          PREFIX, target_label, features_set_label, CV.REPEATS, IMPUTE.METHOD)
 
-        features <- get_features(target_label, features_labels, dataset)
+        features.labels <- get_features(target_label, features_set_label, dataset)
 
-        print(c(target_label, features_labels))
+        # define formula
+        # formula1 <- set_formula(target_label, features.labels)
+        formula1 <- NULL
 
-        train_model(
+        models.list <- benchmark_algorithms(
           target_label = target_label,
-          features = features,
-          data_set = dataset,
+          features = features.labels,
+          formula_input = formula1,
+          data = dataset,
           impute_method = IMPUTE.METHOD,
           algorithm_list = algorithm.list,
           training_configuration = training.configuration,
@@ -266,9 +182,10 @@ if (mode == "new") {
           try_first = TRY.FIRST,
           models_list_name = models.list.name
         )
+        return(models.list)
       })
     ############ END
-  ) %T>% { push_message(.["elapsed"]) }
+  ) %T>% push_message(.["elapsed"], model.permutation.string )
 
   # stop cluster if exists
   if (nrow(showConnections()) !=  0) {
@@ -288,8 +205,9 @@ if (mode == "new") {
 ########################################
 # get model in model.permutations.list by model index
 if (mode == "new") {
-
-    models.list <- result.permutations[[model.index]]
+  model.index = 1
+  models.list <- model.permutations.list[[model.index]]
+  models.list %>% head(-2) %>% resamples %>% bwplot
 
 } else if (mode == "old") {
 
@@ -297,11 +215,11 @@ if (mode == "new") {
   model.index = 1
   model.index.labels <- model.permutations.labels %>% .[model.index,] %T>% print
   target_label <- model.index.labels$target_label
-  features_labels <- model.index.labels$features_labels
+  features_set_label <- model.index.labels$features_set_label
 
   # prefix
   models.list.name <- output_filename(
-    PREFIX, target_label, features_labels, CV.REPEATS, IMPUTE.METHOD)
+    PREFIX, target_label, features_set_label, CV.REPEATS, IMPUTE.METHOD)
 
   # get model in model.permutations.labels by model index
   models.list <- readRDS(models.list.name)
@@ -315,7 +233,7 @@ if (mode == "new") {
 models.metrics <- models.list %>% get_model_metrics %T>% print
 # models.metrics <- models.list %>% get_model_metrics(palette = "Dark2") %T>% print
 
-models.metrics$metric1.resamples.boxplots  +
+models.metrics$metric2.resamples.boxplots  +
   theme(text = element_text(family = 'Gill Sans'))
 
 
