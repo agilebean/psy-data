@@ -11,8 +11,12 @@ rm(list=ls())
 mode <- "new"
 # mode <- "old"
 
+# Important:
+# BEFORE script, sync the google drive folder, otherwise data will not be found!
+
 # load libraries
 # devtools::install_github("agilebean/machinelearningtools", force = TRUE)
+detach("package:machinelearningtools", unload = TRUE)
 
 libraries <- c("magrittr"
                , "sjlabelled" # read SPSS
@@ -25,10 +29,15 @@ libraries <- c("magrittr"
 )
 sapply(libraries, require, character.only = TRUE)
 
-target.label.list <- c("PERF08", "PERF09")
+# Gcloud:
+## RPushbullet must be initialized: pbSetup() + get Access Token from website
+## o.lgWvoSgOZ0is96arIc3sFZC3Y2kD2J8i
+
+target.label.list <- c("LIFE_S_R", "PERF09", "PERF10",  "PERF11")
 # target.label.list <- c("PERF09")
 features.set.labels.list <- c("big5items", "big5composites")
 # features.set.labels.list <- c("big5composites")
+# features.set.labels.list <- c("big5items")
 
 model.permutations.labels <- crossing(
   target_label = target.label.list,
@@ -46,13 +55,13 @@ nominal <- TRUE # with ordinal as NOMINAL factor
 seed <- 17
 
 # cross-validation repetitions
-# CV.REPEATS <- 2
+CV.REPEATS <- 2
 # CV.REPEATS <- 10
-CV.REPEATS <- 100
+# CV.REPEATS <- 100
 
 # try first x rows of training set
-TRY.FIRST <- NULL
-# TRY.FIRST <- 50
+# TRY.FIRST <- NULL
+TRY.FIRST <- 50
 
 IMPUTE.METHOD <- NULL
 # IMPUTE.METHOD <- "knnImpute"
@@ -92,29 +101,19 @@ get_features <- function(target_label, features_set_label, data) {
 ########################################
 algorithm.list <- c(
   "lm"
-  # ,"glm"
+  # ,"glmnet"
   , "knn"
-  , "kknn"
-  , "gbm"
-  , "rf" # 754s/100rep
-  , "ranger"
-  , "xgbTree" # 377s/100rep
-  , "xgbLinear" # 496s/100rep
-  , "svmLinear"
-  , "svmRadial"
+  # , "kknn"
+  # , "gbm"
+  # , "rf" # 754s/100rep
+  # , "ranger"
+  # , "xgbTree" # 377s/100rep
+  # , "xgbLinear" # 496s/100rep
+  # , "svmLinear"
+  # , "svmRadial"
 )
 
-# script-specific implementation
-remove_unused_variables <- function(data) {
-
-  data %>%
-    # rerun big5 without covariates
-    select(-COMNAME, -educa, -gender, -LIFE_S_R, -inf, -sd) %>%
-    # remove turnover (TOxx) variables
-    select(-starts_with("TO")) %>%
-    # remove performance composite index
-    select(-PERF.all)
-}
+# clusterOff(cluster.new)
 
 #######################################################################
 # MAIN
@@ -132,10 +131,14 @@ if (mode == "new") {
   ###################################################
   # 1. Data Acquistion - includes 2.2 Data Cleaning
   ###################################################
-  dataset.label <- "data/data.raw.rds" %T>% print
-  data.raw <- readRDS(dataset.label)
-  # script-specific removal of unused variables
-  data.new <- data.raw %>% remove_unused_variables %T>% print
+
+  if (!is.null(IMPUTE.METHOD)) {
+    dataset.label <- "data/dataset.rds" %>% print
+  } else {
+    dataset.label <- "data/dataset.NA.rds" %>% print
+  }
+
+  data.new <- readRDS(dataset.label) %T>% print
 
   if (!is.null(IMPUTE.METHOD)) {
 
@@ -150,10 +153,8 @@ if (mode == "new") {
 
   } else {
 
-    dataset <- data.new %T>% print
+    dataset <- data.new
   }
-
-  cluster.new <- clusterOn(detectCores())
 
   time.total <- system.time(
     ############ START
@@ -163,20 +164,24 @@ if (mode == "new") {
 
         models.list.name <- output_filename(
           PREFIX, target_label, features_set_label, CV.REPEATS, IMPUTE.METHOD)
-
+        # models.list.name <- "data/models.list.PERF09.big5composites.100repeats.knnImpute.rds"
+        # target_label <- "LIFE_S_R"
+        # features_set_label <- "big5composites"
+        #
         features.labels <- get_features(target_label, features_set_label, dataset)
 
         # define formula
-        # formula1 <- set_formula(target_label, features.labels)
-        formula1 <- NULL
+        formula1 <- set_formula(target_label, features.labels)
+        # formula1 <- NULL
 
         models.list <- benchmark_algorithms(
           target_label = target_label,
           features = features.labels,
-          formula_input = formula1,
+          formula_input = NULL,
           data = dataset,
           impute_method = IMPUTE.METHOD,
           algorithm_list = algorithm.list,
+          glm_family = "gaussian",
           training_configuration = training.configuration,
           cv_repeats = CV.REPEATS,
           try_first = TRY.FIRST,
@@ -185,20 +190,76 @@ if (mode == "new") {
         return(models.list)
       })
     ############ END
-  ) %T>% push_message(.["elapsed"], model.permutation.string )
-
-  # stop cluster if exists
-  if (nrow(showConnections()) !=  0) {
-    registerDoSEQ()
-    stopCluster(cluster.new)
-  }
+  ) %T>% { push_message(.["elapsed"], model.permutation.string ) }
 
 }
 
+models.list
+models.list <- readRDS("data/models.list.LIFE_S_R.big5items.2repeats.noimpute.rds")
+models.list %>% machinelearningtools::get_model_metrics()
 
 ################################################################################
 # 4. Evaluate Models
 ################################################################################
+
+get_testingset_performance <- function(
+  models_list, target_label = NULL, testing_set = NULL) {
+
+  # remove target.label + testing.set from models.list
+  if (!is.null(models_list$target.label) & !is.null(models_list$testing.set)) {
+
+    target.label <- models_list$target.label
+    testing.set <- models_list$testing.set
+    models_list %<>% purrr::list_modify("target.label" = NULL, "testing.set" = NULL)
+
+  } else if (!is.null(target_label) & !is.null(testing_set)) {
+
+    target.label <- target_label
+    testing.set <- testing_set
+  }
+
+  features.labels <- testing.set %>% select(-target.label) %>% names
+
+  observed <- testing.set[[target.label]]
+
+  if (is.factor(observed)) {
+
+    models_list %>%
+      map(
+        function(model_object) {
+          # print(model_object$method)
+          if (contains_factors(testing.set) & !handles_factors(model_object$method)) {
+            formula1 <- set_formula(target.label, features.labels)
+            testing.set <- model.matrix(formula1, data = testing.set)
+          }
+          model_object %>%
+            # estimate target in the testing set
+            predict(., newdata = testing.set) %>%
+            confusionMatrix(., observed) %>%
+            .$overall %>%
+            # tricky: convert first to dataframe > can select column names
+            map_df(1) %>% select(Accuracy, Kappa)
+        }
+      ) %>%
+      bind_rows(.id = "model") %>%
+      setNames(c("model", "Acc.testing", "Kappa.testing"))
+
+  } else if (is.numeric(observed)) {
+
+    models_list %>%
+      # caret::predict() can take a list of train objects as input
+      predict(testing.set) %>%
+      map_df(function(predicted) {
+        c(sqrt(mean( (observed - predicted)^2)),
+          # R2 = regression SS / TSS > https://stackoverflow.com/a/40901487/7769076
+          sum((predicted - mean(predicted))^2) / sum((observed - mean(observed))^2))
+      }) %>%
+      t %>%
+      as_tibble(rownames = "model") %>%
+      rename(RMSE.testing = V1, Rsquared.testing = V2) %>%
+      arrange(RMSE.testing)
+  }
+}
 
 ########################################
 ## 4.1 Training Set Performance
@@ -207,6 +268,7 @@ if (mode == "new") {
 if (mode == "new") {
   model.index = 1
   models.list <- model.permutations.list[[model.index]]
+  models.list <- readRDS("data/models.list.LIFE_S_R.big5composites.2repeats.noimpute.rds")
   models.list %>% head(-2) %>% resamples %>% bwplot
 
 } else if (mode == "old") {
@@ -233,7 +295,7 @@ if (mode == "new") {
 models.metrics <- models.list %>% get_model_metrics %T>% print
 # models.metrics <- models.list %>% get_model_metrics(palette = "Dark2") %T>% print
 
-models.metrics$metric2.resamples.boxplots  +
+models.metrics$metric1.resamples.boxplots  +
   theme(text = element_text(family = 'Gill Sans'))
 
 
