@@ -15,7 +15,7 @@ mode <- "new"
 # BEFORE script, sync the google drive folder, otherwise data will not be found!
 
 # load libraries
-devtools::install_github("agilebean/machinelearningtools", force = TRUE)
+# devtools::install_github("agilebean/machinelearningtools", force = TRUE)
 detach("package:machinelearningtools", character.only = TRUE)
 
 libraries <- c("magrittr"
@@ -34,9 +34,10 @@ sapply(libraries, require, character.only = TRUE)
 ## o.lgWvoSgOZ0is96arIc3sFZC3Y2kD2J8i
 
 # target.label.list <- c("LIFE_S_R", "PERF09", "PERF10",  "PERF11")
-target.label.list <- c("PERF09")
-# features.set.labels.list <- c("big5items", "big5composites")
-features.set.labels.list <- c("big5composites")
+target.label.list <- c("PERF09", "PERF10",  "PERF11")
+# target.label.list <- c("PERF09")
+features.set.labels.list <- c("big5items", "big5composites")
+# features.set.labels.list <- c("big5composites")
 # features.set.labels.list <- c("big5items")
 
 model.permutations.labels <- crossing(
@@ -55,9 +56,9 @@ nominal <- TRUE # with ordinal as NOMINAL factor
 seed <- 171
 
 # cross-validation repetitions
-CV.REPEATS <- 2
+# CV.REPEATS <- 2
 # CV.REPEATS <- 10
-# CV.REPEATS <- 100
+CV.REPEATS <- 100
 
 # try first x rows of training set
 TRY.FIRST <- NULL
@@ -215,30 +216,21 @@ if (mode == "new") {
 
 }
 
-# models.list <- readRDS("data/models.list.LIFE_S_R.big5items.2repeats.noimpute.rds")
-# models.list <- readRDS("data/models.list.PERF09.big5composites.2repeats.noimpute.rds")
-# models.list %>% get_model_metrics()
-# metrics <- models.list %>% get_model_metrics()
-# metrics
-
 
 ## 4.1 Training Set Performance
 ########################################
-if (mode == "old") {
+# get model in model.permutations.list by model index
+model.index = 1
+model.index.labels <- model.permutations.labels %>% .[model.index,] %T>% print
+target_label <- model.index.labels$target_label
+features_set_label <- model.index.labels$features_set_label
 
-  # get model in model.permutations.list by model index
-  model.index = 1
-  model.index.labels <- model.permutations.labels %>% .[model.index,] %T>% print
-  target_label <- model.index.labels$target_label
-  features_set_label <- model.index.labels$features_set_label
+# prefix
+models.list.name <- output_filename(
+  PREFIX, target_label, features_set_label, CV.REPEATS, IMPUTE.METHOD)
 
-  # prefix
-  models.list.name <- output_filename(
-    PREFIX, target_label, features_set_label, CV.REPEATS, IMPUTE.METHOD)
-
-  # get model in model.permutations.labels by model index
-  models.list <- readRDS(models.list.name)
-}
+# get model in model.permutations.labels by model index
+models.list <- readRDS(models.list.name)
 
 # training set performance
 models.metrics <- models.list %>% get_model_metrics %T>% print
