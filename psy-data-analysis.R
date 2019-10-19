@@ -34,20 +34,23 @@ sapply(libraries, require, character.only = TRUE)
 ## o.lgWvoSgOZ0is96arIc3sFZC3Y2kD2J8i
 
 # target.label.list <- c("LIFE_S_R", "PERF09", "PERF10",  "PERF11")
-target.label.list <- c("PERF09", "PERF10",  "PERF11")
+target.label.list <- c("PERF10")
 # target.label.list <- c("PERF09")
 features.set.labels.list <- c("big5items", "big5composites")
 # features.set.labels.list <- c("big5composites")
 # features.set.labels.list <- c("big5items")
+job.labels.list <- c("sales", "R&D", "support", "all")
 
 model.permutations.labels <- crossing(
   target_label = target.label.list,
-  features_set_label = features.set.labels.list
+  features_set_label = features.set.labels.list,
+  job_label = job.labels.list
   )
+# model.permutations.labels <- model.permutations.labels[-c(1:3),]
 
 model.permutation.string <- model.permutations.labels %>%
-  pmap_chr(function(target_label, features_set_label) {
-    paste(target_label, features_set_label, sep = "-")
+  pmap_chr(function(target_label, features_set_label, job_label) {
+    paste(target_label, features_set_label, job_label, sep = "-")
   })
 
 # nominal <- FALSE # with ordinal as ORDERED factors
@@ -63,10 +66,10 @@ CV.REPEATS <- 100
 # try first x rows of training set
 TRY.FIRST <- NULL
 # TRY.FIRST <- 50
-# TRY.FIRST <- 200
+# TRY.FIRST <- 100
 
 # split ratio
-SPLIT.RATIO <- 0.8
+SPLIT.RATIO <- 1.0
 
 # imputation method
 IMPUTE.METHOD <- NULL
@@ -83,10 +86,11 @@ PREFIX <- "data/models.list"
 get_features <- function(data, target_label, features_set_label) {
 
   data %>%
-    select(-target_label,
+    select(-(target_label),
            -starts_with("TO"),
            -starts_with("PERF"),
-           -starts_with("LIFE")
+           -starts_with("LIFE"),
+           -job
     ) %>%
     {
       if (features_set_label == "big5items") {
@@ -108,16 +112,16 @@ get_features <- function(data, target_label, features_set_label) {
 ########################################
 algorithm.list <- c(
   "lm"
-  ,"glmnet"
+  # ,"glmnet"
   , "knn"
-  , "kknn"
-  , "gbm"
-  , "rf" # 754s/100rep
-  , "ranger"
-  , "xgbTree" # 377s/100rep
-  , "xgbLinear" # 496s/100rep
-  , "svmLinear"
-  , "svmRadial"
+  # , "kknn"
+  # , "gbm"
+  # , "rf" # 754s/100rep
+  # , "ranger"
+  # , "xgbTree" # 377s/100rep
+  # , "xgbLinear" # 496s/100rep
+  # , "svmLinear"
+  # , "svmRadial"
 )
 
 
@@ -127,6 +131,7 @@ algorithm.list <- c(
 # MAIN
 #######################################################################
 
+
 #######################################################################
 if (mode == "new") {
 
@@ -134,8 +139,7 @@ if (mode == "new") {
   training.configuration <- trainControl(
     method = "repeatedcv", number = 10
     , repeats = CV.REPEATS
-    , savePredictions = "final",
-    # , returnResamp = "all"
+    , savePredictions = "final"
     )
 
   ###################################################
@@ -163,21 +167,49 @@ if (mode == "new") {
 
   }
 
+  # target_label <- "PERF10"
+  # features_set_label <- "big5items"
+  # features.labels <- data.new %>% get_features(target_label, features_set_label)
+  # # job_label <-  "sales"
+  # # job_label <-  "R&D"
+  # job_label <- "support"
+  # # job_label <-  "all"
+
+
   time.total <- system.time(
     ############ START
     model.permutations.list <- model.permutations.labels %>%
 
-      pmap(function(target_label, features_set_label) {
+      pmap(function(target_label, features_set_label, job_label) {
+
+        # models.list.name <- output_filename(
+        #   PREFIX, target_label, features_set_label, CV.REPEATS, IMPUTE.METHOD)
 
         models.list.name <- output_filename(
-          PREFIX, target_label, features_set_label, CV.REPEATS, IMPUTE.METHOD)
+          PREFIX,
+          c(target_label, features_set_label, job_label),
+          cv_repeats = CV.REPEATS, impute_method = IMPUTE.METHOD
+        ) %>% print
 
         features.labels <- data.new %>% get_features(target_label, features_set_label)
 
         # select variables - for different targets, #NA can differ
         dataset <- data.new %>%
-          select(target_label, features.labels) %>%
-          na.omit
+          select(job, target_label, features.labels) %>%
+          {
+            if (job_label == "sales") {
+              filter(., job == 1)
+            } else if (job_label == "R&D") {
+              filter(., job == 10)
+            } else if (job_label == "support") {
+              filter(., job != 1 & job != 10)
+            } else {
+              .
+            }
+          } %>%
+          select(-job) %>%
+          na.omit %T>%
+          print
 
         ########################################
         ## 2.4 Split the data
@@ -189,7 +221,7 @@ if (mode == "new") {
         training.set <- dataset[training.index, ] %T>% print
         # if split_ratio == 100%, then create no testing.set
         testing.set <- if (SPLIT.RATIO != 1.0) dataset[-training.index, ] else NULL
-        testing.set %T>% print
+        testing.set
 
         # benchmark ml algorithms
         models.list <- benchmark_algorithms(
@@ -215,7 +247,6 @@ if (mode == "new") {
   ) %T>% { push_message(.["elapsed"], model.permutation.string ) }
 
 }
-
 
 ## 4.1 Training Set Performance
 ########################################
@@ -247,6 +278,11 @@ models.list.stripped %>% resamples %>% dotplot
 models.list.stripped %>% resamples %>% .$values
 
 
+dataset <- models.list$testing.set
+dataset %<>% select(-PERF09)
+pc <- dataset %>% prcomp
+
+
 ########################################
 ## 4.2 Testing Set Performance
 ########################################
@@ -268,6 +304,37 @@ models.metrics$benchmark.all
 
 data.new %>% nearZeroVar(saveMetrics = TRUE)
 
+get_featureset <- function(data,
+                           target_label = NULL,
+                           featureset_labels = NULL,
+                           select_starts = NULL) {
+
+  data %>%
+    dplyr::select(!!rlang::sym(target_label)) %>%
+
+    {
+      if (!is.null(featureset_labels)) {
+        cbind(.,
+              data %>%
+                dplyr::select(!!!rlang::syms(featureset_labels))
+        )
+      } else { . }
+    } %>%
+    {
+      if (!is.null(select_starts)) {
+
+        cbind(.,
+              map_dfc(select_starts, function(start_keyword) {
+                data %<>%
+                  select(starts_with(start_keyword))
+              })
+        )
+
+      } else { . }
+    } %>%
+    select(-job) %>%
+    as_tibble()
+}
 
 ################################################################################
 #
