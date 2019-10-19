@@ -15,65 +15,78 @@ mode <- "report.all"
 CV.REPEATS <- 100
 # IMPUTE.METHOD <- NULL
 # IMPUTE.METHOD <- "medianImpute"
-# IMPUTE.METHOD <- "noimpute"
+IMPUTE.METHOD <- "noimpute"
 # IMPUTE.METHOD <- "knnImpute"
-IMPUTE.METHOD <- "bagImpute"
+# IMPUTE.METHOD <- "bagImpute"
 
 # load libraries
 # devtools::install_github("agilebean/machinelearningtools", force = TRUE)
-libraries <- c("dplyr", "tidyverse")
+# detach("package:machinelearningtools", character.only = TRUE)
+libraries <- c("dplyr", "tidyverse", "magrittr", "knitr", "machinelearningtools")
 sapply(libraries, require, character.only = TRUE)
 
-if (mode == "report.single") {
+PREFIX <- "output/psy-data-analysis"
 
-  # select target and features
-  target.label <- "PERF.all"
-  # target.label <- "PERF09"
+system.time(
+  if (mode == "report.single") {
 
-  # features.set <- "big5items"
-  features.set <- "big5composites"
-  output.filename <- paste0(c("output/psy-data-analysis",
-                              target.label, features.set, "pdf"),
-                            collapse = ".") %>% print
+    # select target and features
+    target.label <- c("PERF10")
+    features.set.label <- c("big5items")
+    job.label <- c("R&D")
 
-  system.time(
-    rmarkdown::render(input = "psy-data-analysis.Rmd",
-                      params = list(target.label = target.label,
-                                    features.set = features.set),
-                      output_file = output.filename)
-  )
+    output.filename <- output_filename(
+      PREFIX,
+      c(target.label, features.set.label, job.label),
+      cv_repeats = CV.REPEATS, impute_method = IMPUTE.METHOD,
+      suffix = "pdf"
+    ) %>%
+      # tricky: avoid render error for special character (R\&D) in output_file
+      gsub("&", "", .)
 
-} else if (mode == "report.all") {
+    system.time(
+      rmarkdown::render(input = "psy-data-analysis.Rmd",
+                        params = list(target.label = target.label,
+                                      features.set = features.set.label,
+                                      job.label = job.label),
+                        output_file = output.filename)
+    )
 
-  target.label.list <- c("PERF09", "PERF.all")
-  features.set.list <- c("big5items", "big5composites")
-  # target.label.list <- c("PERF09")
-  # features.set.list <- c("big5items")
+  } else if (mode == "report.all") {
 
-  model.permutations.list <- crossing(target.label = target.label.list,
-                         features.set = features.set.list)
+    target.label.list <- c("PERF10")
+    features.set.labels.list <- c("big5items", "big5composites")
+    # features.set.labels.list <- c("big5composites")
+    job.labels.list <- c("sales", "R&D", "support", "all")
 
-  render_report <- function(target.label, features.set) {
+    model.permutations.labels <- crossing(
+      target_label = target.label.list,
+      features_set_label = features.set.labels.list,
+      job_label = job.labels.list
+    ) %T>% print
 
-    # output.filename <- paste0(c("output/psy-data-test",
-    output.filename <- paste0(c("output/psy-data-analysis",
-                             target.label, features.set,
-                             paste0(CV.REPEATS, "repeats"),
-                             IMPUTE.METHOD,
-                             "pdf"),
-                             collapse = ".") %>% print
+    render_report <- function(target_label, features_set_label, job_label) {
 
-    # rmarkdown::render(input = "psy-data-test.Rmd",
-    rmarkdown::render(input = "psy-data-analysis.Rmd",
-                      params = list(target.label = target.label,
-                                    features.set = features.set,
-                                    cv.repeats = CV.REPEATS,
-                                    impute.method = IMPUTE.METHOD),
-                      output_file = output.filename)
-  }
+      output.filename <- output_filename(
+        PREFIX,
+        c(target_label, features_set_label, job_label),
+        cv_repeats = CV.REPEATS, impute_method = IMPUTE.METHOD,
+        suffix = "pdf"
+      ) %>%
+        # tricky: avoid render error for special character (R\&D) in output_file
+        gsub("&", "", .)
 
-  system.time(
-    model.permutations.list %>% pmap_chr(render_report)
-  )
-} # 163s
+      rmarkdown::render(input = "psy-data-analysis.Rmd",
+                        params = list(target.label = target_label,
+                                      features.set = features_set_label,
+                                      job.label = job_label,
+                                      cv.repeats = CV.REPEATS,
+                                      impute.method = IMPUTE.METHOD),
+                        output_file = output.filename)
+    }
 
+    system.time(
+      model.permutations.labels %>% pmap_chr(render_report)
+    )
+  } # 142s/8 = 18s
+)
