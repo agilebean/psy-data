@@ -69,6 +69,12 @@ file.raw %<>%
   dplyr::select(-id, -prinum, -TESTDATE) %>% 
   tbl_df 
 
+file.raw$job %>% table
+
+file.raw %>% 
+  filter(job != 1 & job != 10) %>% 
+  count()
+
 ```
 
 # 2. Data Preparation
@@ -175,25 +181,30 @@ To obtain data.pruned, we remove the variables
 As the remaining dataset would only have 858 observations without NAs, we remove PERF10 and PERF11 which increases sample size to n=958. We also remove TO07 due to zero variance.
 
 ```{r define data.pruned code, echo=TRUE}
-data.pruned <- data.raw %>% 
+data.pruned <-
+  data.raw %>% 
   select(-JOB_S_R, # 1027 NAs
          -howlong, #  910 NAs
-         -PERF11,  #  502 NAs
-         -PERF10,  #  431 NAs
-         -job,     #  342 NAs
+         # -PERF11,  #  502 NAs
+         # -PERF10,  #  431 NAs
+         # -job,     #  342 NAs
          # -PERF09,  #  331 NAs
-         # -PERF07, # 309 NAs
-         -TO07,    #  288 NAs
+         -PERF08,
+         -PERF07, # 309 NAs
+         # -TO07,    #  288 NAs
          -class,   #  272 NAs +(904-713)
          -team_id, #  238 NAs +(1053-904)
          # -PERF08,  #  198 NAs +(1202-1053)
          # -LIFE_S_R #  107 NAs +(1288-1202)
+         -starts_with("TO"),
+         -COMNAME,
+         -gender, -educa, -inf, -sd
   ) %>% 
   # create mean performance & turnover score
-  mutate(PERF.all = rowMeans(select(., starts_with("PERF")) ) ) %>%
-  mutate(TO.all = rowMeans(select(., starts_with("TO")) ) ) %>% 
+  # mutate(PERF.all = rowMeans(select(., starts_with("PERF")) ) ) %>%
+  # mutate(TO.all = rowMeans(select(., starts_with("TO")) ) ) %>% 
   # move life satisfaction to dataframe end to indicate target variable
-  select(-LIFE_S_R, everything())
+  select(-LIFE_S_R, everything()) %>% print
 
 ```
 
@@ -201,11 +212,12 @@ data.pruned <- data.raw %>%
 ### 2.2.2 Clean dataset
 Removing the missing values shrinks the dataset from n=1621 to n=1023.
 
-```{r define dataset without NA, echo=TRUE}
+```{r define dataset containing NA, echo=TRUE}
 data.pruned %>% nrow
 data.pruned %>% saveRDS(dataset.NA.label)
 ## final removal of NA rows
-dataset <- data.pruned %>% drop_na %T>% { print(nrow(.)) }
+# dataset <- data.pruned %>% drop_na %T>% { print(nrow(.)) }
+dataset <- data.pruned %T>% { print(nrow(.)) }
 ```
 
 The final dataset has the following structure:
