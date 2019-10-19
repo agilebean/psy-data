@@ -7,19 +7,20 @@ output:
 
 params:
   date: !r Sys.Date()
-  target.label: "PERF.all"
-  # target.label: "PERF09"
+  # target.label: "PERF.all"
+  target.label: "LIFE_S_R"
   # features.set: "big5items"
   features.set: "big5composites"
   split.ratio: 0.80
   cv.repeats: 100
   # cv.repeats: 10
-  # impute.method: "noimpute"
+  impute.method: "noimpute"
   # impute.method: "medianImpute"
-  impute.method: "knnImpute"
+  # impute.method: "bagImpute"
 
 title: "Job Performance Analysis with
-        target = `r params$target.label` and features set = `r params$features.set`"
+        target = `r params$target.label` and
+        features set = `r params$features.set`"
 ---
 
 
@@ -32,6 +33,7 @@ options(digits = 3)
 # rm(list=ls()) # tricky: deletes params
 
 # devtools::install_github("agilebean/machinelearningtools", force = TRUE)
+# detach("package:machinelearningtools", character.only = TRUE)
 # load libraries
 libraries <- c("dplyr", "magrittr"
                , "sjlabelled" # read SPSS
@@ -43,7 +45,7 @@ libraries <- c("dplyr", "magrittr"
 )
 sapply(libraries, require, character.only = TRUE)
 
-if (params$impute.method == "noimpute") {
+if (params$impute.method != "noimpute") {
   dataset.label <- "data/dataset.rds" %>% print
 } else {
   dataset.label <- "data/dataset.NA.rds" %>% print
@@ -54,15 +56,16 @@ nominal <- TRUE # with ordinal as NOMINAL factor
 
 seed <- 17
 
-WIDTH.varimp <- if (features.set == "big5items") 8 else 4
-HEIGHT.varimp <- if (features.set == "big5items") 8 else 2
+WIDTH.varimp <- if (params$features.set == "big5items") 8 else 4
+HEIGHT.varimp <- if (params$features.set == "big5items") 8 else 2
 
 get_features <- function(target_label, features_set, data_set) {
   
   data_set %>% 
     select(-target_label,
            -starts_with("TO"),
-           -starts_with("PERF")
+           -starts_with("PERF"),
+           -LIFE_S_R
     ) %>% 
     {
       if (features_set == "big5items") {
@@ -104,43 +107,42 @@ set.seed(seed)
 dataset %<>% nrow %>% sample %>% dataset[.,]
 
 # rerun big5 without covariates
-dataset %<>% select(-COMNAME, -educa, -gender, -LIFE_S_R, -inf, -sd)
+# dataset %<>% select(-COMNAME, -educa, -gender, -LIFE_S_R, -inf, -sd)
 
 ########################################
 # 3.2: Select the features & formula
 ########################################
 # define features
-features <- get_features(params$target.label, params$features.set, dataset)
+features.labels <- get_features(params$target.label, params$features.set, dataset)
 
 # define formula
-formula1 <- set_formula(params$target.label, features)
+formula1 <- set_formula(params$target.label, features.labels)
 
 ```
 
-For this analysis, the target is set to `r if (params$target.label == "PERF.all") {paste("the averaged performance score")} else if (grepl("PERF[0-9]", params$target.label)) { paste("a one-year performance score")} else if (params$target.label == "TO.all") {paste("the averaged turnover score")} else {paste(params$target.label)}`, and the features are `r if (params$features.set == "big5items") {paste("all Big5 items")} else if (params$features.set =="big5composites") {paste("the Big5 composite scores")} else {paste(params$features.set)}`.
-
-The number of variables is reduced from `r nrow(dataset)`  variables to the target variable (`r params$target.label`) and `r length(features)` features.
+For this analysis, the target is set to 
+`r if (params$target.label == "PERF.all") { paste("the averaged performance score")} else if (grepl("PERF[0-9]", params$target.label)) { paste("a one-year performance score")} else if (params$target.label == "TO.all") { paste("the averaged turnover score")} else if (params$target.label == "LIFE_S_R") { paste("the life satisfaction score")} else {paste(params$target.label)}`, 
+and the features are 
+`r if (params$features.set == "big5items") {paste("all Big5 items")} else if (params$features.set =="big5composites") {paste("the Big5 composite scores")} else {paste(params$features.set)}`.
 
 ```{r select target & features, echo=TRUE}
 params$target.label
-features
+features.labels
 ```
 
 ## 2.3 Split the data
 To train the machine learning models, we split the data into a training set (`r params$split.ratio*100`%) for training and tuning the models, and a testing set (`r 100-params$split.ratio*100`%) that serves as unseen data for the final validation step.
-To avoid imbalance between training and testing set, we must first randomize the data (shuffle).
 
 
 ```{r split the data code, include=FALSE}
 ########################################
 ## 2.3 Split the data
 ########################################
+
+## tricky tricky:
+## shuffle reduces testing set RMSE https://stackoverflow.com/q/58147450/7769076
 # shuffle data
-set.seed(seed)
-# set.seed(5)
-shuffle.index <- dataset %>% nrow %>% sample
-dataset %<>% .[shuffle.index,] %T>% print
-# short version:
+# set.seed(seed)
 # dataset %<>% nrow %>% sample %>% dataset[.,] %T>% print
 
 # later: imputation of NAs
@@ -153,6 +155,11 @@ if (params$impute.method != "noimpute") {
   
   dataset <- dataset.imputed %>% na.omit
 }
+
+# select variables - for different targets, #NA can differ
+dataset <- dataset %>%
+  select(params$target.label, features.labels) %>%
+  na.omit
 
 # dataset subsetting for tibble: [[
 training.index <- createDataPartition(dataset[[params$target.label]], 
@@ -213,6 +220,8 @@ The machine learning models used in the benchmarking are:
   | "knn": k nearest neighbors
   | "svmRadial": support vector machines - radial kernel
 
+\newpage
+
 # 4. Evaluate Models
 ```{r get model, cache=TRUE, include=FALSE}
 models.list.name <- paste0(c("data/models.list", 
@@ -234,39 +243,60 @@ Training the model on the training set with `r training_configuration_number`-fo
 
 ## 4.1 Training Set Performance
 
-```{r train the model,fig.width=7, fig.height=5, cache=TRUE, echo=FALSE}
-########################################
-########################################
+```{r trainingset calculation, cache=TRUE, echo=FALSE}
+
 # get model metrics
 models.metrics <- models.list %>% get_model_metrics
 models.list %<>% purrr::list_modify(target.label = NULL, testing.set = NULL)
 
+# models.metrics$RMSE.training %>% filter(str_detect(model, "^lm$"))
+metric1 <- models.metrics$metric1.training %>% select(2) %>% names %>% gsub(".mean", "", .)
+metric2 <- models.metrics$metric1.training %>% select(2) %>% names %>% gsub(".mean", "", .)
+rank.lm.training.metric1 <- which(models.metrics$metric1.training$model == "lm")
+
+# get_metric_from_resamples
+# models.metrics$metric1.training %>% arrange(RMSE.mean)
+
 # display RMSE trainingset performance - table
 models.metrics$metric1.training %>% kable(caption = "training set performance: RMSE")
+```
 
+In the benchmarking table above, linear regression ("lm") performs in `r metric1` on `r rank.lm.training.metric1`th rank of the selected machine learning models.
+
+
+```{r trainingset metric1 boxplots,fig.width=7, fig.height=4.8, cache=TRUE, echo=FALSE}
 # display RMSE trainingset performance - boxplots
 models.metrics$metric1.resamples.boxplots
 # models.metrics$metric1.resamples.boxplots + 
 #   theme(text = element_text(family = 'Gill Sans'))
-
-# models.metrics$RMSE.training %>% filter(str_detect(model, "^lm$"))
-rank.lm.training <- which(models.metrics$metric1.training$model == "lm")
 ```
+\newpage
 
-We can see that linear regression ("lm") performs on `r rank.lm.training`th RMSE rank of the selected machine learning models. This result must be validated on the testing set.
-
-```{r training Rsquared, cache=FALSE}
+```{r trainingset metric2 , cache=FALSE}
 # display Rsquared trainingset performance - table
 models.metrics$metric2.training %>% kable(caption = "training set performance: Rsquared")
 
-# display Rsquared trainingset performance - boxplots
-models.metrics$metric2.resamples.boxplots
 # models.metrics$metric2.resamples.boxplots +
 #   theme(text = element_text(family = 'Gill Sans'))
-
+rank.lm.training.metric2 <- which(models.metrics$metric2.training$model == "lm")
 ```
 
+In the benchmarking table above, linear regression ("lm") performs in `r metric2` on `r rank.lm.training.metric2`th  rank of the selected machine learning models.
+
+```{r trainingset metric2 boxplots,fig.width=7, fig.height=5, cache=TRUE}
+# display Rsquared trainingset performance - boxplots
+models.metrics$metric2.resamples.boxplots
+
+```
+\newpage
+
 ## 4.2 Testing Set Performance
+
+The Rsquared for testing set was calculated with three formulas:
+
+* "R2.testing" calculates the performance relative to the trainingset mean.
+* "R2.testing1" calculates the performance relative to the testingset mean.
+* "R2.postResample" uses the (incorrect) caret implementation for Rsquared by the correlation between observed and predicted values.
 
 ```{r testing set RMSE, cache=FALSE}
 ########################################
@@ -290,20 +320,23 @@ models.metrics$metric2.resamples.boxplots
 # models.metrics$metrics.testing
 models.metrics$metrics.testing %>% kable(caption = "testing set performance: RMSE")
 
-rank.lm.testing <- which(models.metrics$metrics.testing$model == "lm")
+rank.lm.testing <-  which(models.metrics$metrics.testing$model == "lm")
 
 
 ```
 
 We had reserved a portion of the original data as testing set to validate the model performance on unseen data. 
-The model comparison on RMSE shows that linear regression model `r if (rank.lm.testing == rank.lm.training) {paste0("remained on ", rank.lm.training, "th rank.")} else if (rank.lm.testing < rank.lm.training) {paste0("improved from ", rank.lm.training, "th to ", rank.lm.testing, "th rank.")} else {paste0("dropped from ", rank.lm.training, "th to ", rank.lm.testing, "th rank.")}`
+The model comparison on `r metric1` shows that linear regression model `r if (rank.lm.testing == rank.lm.training.metric1) {paste0("remained on ", rank.lm.training.metric1, "th rank.")} else if (rank.lm.testing < rank.lm.training.metric1) {paste0("improved from ", rank.lm.training.metric1, "th to ", rank.lm.testing, "th rank.")} else {paste0("dropped from ", rank.lm.training.metric1, "th to ", rank.lm.testing, "th rank.")}`
 
-The following table compares all models training set performance with their testing set performance.
+The following table compares the training set performance with the  testing set performance for all models.
 
 ```{r testing set benchmark all}
-models.metrics$benchmark.all %>% kable(caption = "training vs. testing set performance: RMSE")
+models.metrics$benchmark.all %>% 
+  select(-R2.testing2, -R2.postResample) %>% 
+  kable(caption = "training vs. testing set performance: RMSE")
 ```
 
+\newpage
 ## 4.4 Variable Importance
 The variable importance can be calculated for linear regression, gradient boosting machines and random forests only. The scores are normalized with 100 for the maximum variable importance among all predictors. 
 
