@@ -4,21 +4,24 @@ output:
     fig_caption: true
     fig_width: 6
     fig_height: 4
+  keep_tex: yes
 
 params:
   date: !r Sys.Date()
   # target.label: "PERF.all"
-  target.label: "LIFE_S_R"
+  target.label: "PERF10"
   # features.set: "big5items"
   features.set: "big5composites"
-  split.ratio: 0.80
+  job.label: "R&D"
+  split.ratio: 1.0
   cv.repeats: 100
   # cv.repeats: 10
   impute.method: "noimpute"
   # impute.method: "medianImpute"
   # impute.method: "bagImpute"
 
-title: "Job Performance Analysis with
+title: "Job Performance Analysis for 
+        job type = `r params$job.label` with
         target = `r params$target.label` and
         features set = `r params$features.set`"
 ---
@@ -59,26 +62,27 @@ seed <- 17
 WIDTH.varimp <- if (params$features.set == "big5items") 8 else 4
 HEIGHT.varimp <- if (params$features.set == "big5items") 8 else 2
 
-get_features <- function(target_label, features_set, data_set) {
-  
-  data_set %>% 
-    select(-target_label,
+get_features <- function(data, target_label, features_set_label) {
+
+  data %>%
+    select(-(target_label),
            -starts_with("TO"),
            -starts_with("PERF"),
-           -LIFE_S_R
-    ) %>% 
+           -starts_with("LIFE"),
+           -job
+    ) %>%
     {
-      if (features_set == "big5items") {
+      if (features_set_label == "big5items") {
         # remove composite scores - equivalent to (-nn, -ee, -oo, -aa, -cc)
-        select(., -matches("(oo|cc|ee|aa|nn)$")) 
-        
-      } else if (features_set == "big5composites") {
+        select(., -matches("(oo|cc|ee|aa|nn)$"))
+
+      } else if (features_set_label == "big5composites") {
         # remove Big5 items
         select(., -matches(".*(1|2|3|4|5|6)"))
-        
+
       } else { . }
-    } %>% 
-    names %T>% print
+    } %>%
+    names
 }
 ```
 
@@ -113,14 +117,15 @@ dataset %<>% nrow %>% sample %>% dataset[.,]
 # 3.2: Select the features & formula
 ########################################
 # define features
-features.labels <- get_features(params$target.label, params$features.set, dataset)
+features.labels <- get_features(dataset, params$target.label, params$features.set)
 
 # define formula
 formula1 <- set_formula(params$target.label, features.labels)
 
 ```
 
-For this analysis, the target is set to 
+For this analysis, the job type is
+`r params$job.label`, the target is set to 
 `r if (params$target.label == "PERF.all") { paste("the averaged performance score")} else if (grepl("PERF[0-9]", params$target.label)) { paste("a one-year performance score")} else if (params$target.label == "TO.all") { paste("the averaged turnover score")} else if (params$target.label == "LIFE_S_R") { paste("the life satisfaction score")} else {paste(params$target.label)}`, 
 and the features are 
 `r if (params$features.set == "big5items") {paste("all Big5 items")} else if (params$features.set =="big5composites") {paste("the Big5 composite scores")} else {paste(params$features.set)}`.
@@ -128,53 +133,9 @@ and the features are
 ```{r select target & features, echo=TRUE}
 params$target.label
 features.labels
-```
-
-## 2.3 Split the data
-To train the machine learning models, we split the data into a training set (`r params$split.ratio*100`%) for training and tuning the models, and a testing set (`r 100-params$split.ratio*100`%) that serves as unseen data for the final validation step.
-
-
-```{r split the data code, include=FALSE}
-########################################
-## 2.3 Split the data
-########################################
-
-## tricky tricky:
-## shuffle reduces testing set RMSE https://stackoverflow.com/q/58147450/7769076
-# shuffle data
-# set.seed(seed)
-# dataset %<>% nrow %>% sample %>% dataset[.,] %T>% print
-
-# later: imputation of NAs
-# dataset %>% preProcess(method="knnImpute") %>% print
-if (params$impute.method != "noimpute") {
-  
-  dataset.imputed <- dataset %>% 
-    preProcess(method = params$impute.method) %>% 
-    predict(model.imputed, newdata = dataset) %T>% print
-  
-  dataset <- dataset.imputed %>% na.omit
-}
-
-# select variables - for different targets, #NA can differ
-dataset <- dataset %>%
-  select(params$target.label, features.labels) %>%
-  na.omit
-
-# dataset subsetting for tibble: [[
-training.index <- createDataPartition(dataset[[params$target.label]], 
-                                      p = params$split.ratio, list = FALSE)
-testing.set <- dataset[-training.index, ]
-training.set <- dataset[training.index, ]
 
 ```
 
-We verify the `r params$split.ratio*100`:`r 100-params$split.ratio*100` split by checking the number of observations:
-
-```{r split the data}
-training.set %>% nrow
-testing.set %>% nrow
-```
 
 # 3. Train Model
 
@@ -224,13 +185,13 @@ The machine learning models used in the benchmarking are:
 
 # 4. Evaluate Models
 ```{r get model, cache=TRUE, include=FALSE}
-models.list.name <- paste0(c("data/models.list", 
-                          params$target.label, 
-                          params$features.set,
-                          paste0(params$cv.repeats, "repeats"),
-                          params$impute.method,
-                          "rds"), 
-                          collapse = ".") %T>% print
+
+models.list.name <- output_filename(
+  "data/models.list",
+  c(params$target.label, params$features.set, params$job.label),
+  cv_repeats = params$cv.repeats, impute_method = params$impute.method,
+  suffix = "rds"
+) %>% print
 
 models.list <- models.list.name %>% readRDS
 
@@ -288,60 +249,16 @@ In the benchmarking table above, linear regression ("lm") performs in `r metric2
 models.metrics$metric2.resamples.boxplots
 
 ```
-\newpage
-
-## 4.2 Testing Set Performance
-
-The Rsquared for testing set was calculated with three formulas:
-
-* "R2.testing" calculates the performance relative to the trainingset mean.
-* "R2.testing1" calculates the performance relative to the testingset mean.
-* "R2.postResample" uses the (incorrect) caret implementation for Rsquared by the correlation between observed and predicted values.
-
-```{r testing set RMSE, cache=FALSE}
-########################################
-## 4.2 Testing Set Performance
-########################################
-
-## very tricky: models.list is overridden by previous code
-## solution: read again
-# models.list <- models.list.name %>% readRDS
-# 
-# # RMSE for all models on testing set
-# models.list %>%
-#   get_model_metrics %>%
-#   .$RMSE.testing %>% kable(caption = "testing set performance: RMSE")
-# 
-# # training vs. testing set performance
-# models.list %>%
-#   get_model_metrics %>%
-#   .$RMSE.all %>% kable(caption = "training vs. testing set performance: RMSE")
-
-# models.metrics$metrics.testing
-models.metrics$metrics.testing %>% kable(caption = "testing set performance: RMSE")
-
-rank.lm.testing <-  which(models.metrics$metrics.testing$model == "lm")
-
-
-```
-
-We had reserved a portion of the original data as testing set to validate the model performance on unseen data. 
-The model comparison on `r metric1` shows that linear regression model `r if (rank.lm.testing == rank.lm.training.metric1) {paste0("remained on ", rank.lm.training.metric1, "th rank.")} else if (rank.lm.testing < rank.lm.training.metric1) {paste0("improved from ", rank.lm.training.metric1, "th to ", rank.lm.testing, "th rank.")} else {paste0("dropped from ", rank.lm.training.metric1, "th to ", rank.lm.testing, "th rank.")}`
-
-The following table compares the training set performance with the  testing set performance for all models.
-
-```{r testing set benchmark all}
-models.metrics$benchmark.all %>% 
-  select(-R2.testing2, -R2.postResample) %>% 
-  kable(caption = "training vs. testing set performance: RMSE")
-```
 
 \newpage
 ## 4.4 Variable Importance
 The variable importance can be calculated for linear regression, gradient boosting machines and random forests only. The scores are normalized with 100 for the maximum variable importance among all predictors. 
 
 ``` {r variable importance, fig.width=WIDTH.varimp, fig.height=HEIGHT.varimp, cache=TRUE}
-models.varimp <- models.list %>% head(-5) %>% list_modify(knn = NULL)
+models.varimp <- models.list %>% 
+  names %>% 
+  str_detect("lm|glmnet|gbm|rf") %>%
+  purrr::keep(models.list, .)
 
 visualize_importance <- function (importance_object) {
 
