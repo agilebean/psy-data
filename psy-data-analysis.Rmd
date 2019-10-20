@@ -12,7 +12,7 @@ params:
   target.label: "PERF10"
   # features.set: "big5items"
   features.set: "big5composites"
-  job.label: "R&D"
+  job.label: "sales"
   split.ratio: 1.0
   cv.repeats: 100
   # cv.repeats: 10
@@ -119,9 +119,6 @@ dataset %<>% nrow %>% sample %>% dataset[.,]
 # define features
 features.labels <- get_features(dataset, params$target.label, params$features.set)
 
-# define formula
-formula1 <- set_formula(params$target.label, features.labels)
-
 ```
 
 For this analysis, the job type is
@@ -168,17 +165,17 @@ The machine learning models used in the benchmarking are:
 
 **Linear models:**
   | "lm": linear regression (benchmarking baseline)
-  | "glm": logistic regression
+  | "glmnet": linear regression - gaussian kernel
   | "xgbLinear": extreme gradient boosting  - linear kernel
   | "svmLinear": support vector machines - linear kernel
   
 **Tree-based models:**
   | "gbm": gradient boosting machines
-  | "rf", "ranger": random forests
   | "xgbTree": extreme gradient boosting - tree kernel
+  | "rf", "ranger": random forests
   
 **Other non-linear models:**
-  | "knn": k nearest neighbors
+  | "knn", "kknn: k nearest neighbors
   | "svmRadial": support vector machines - radial kernel
 
 \newpage
@@ -191,16 +188,16 @@ models.list.name <- output_filename(
   c(params$target.label, params$features.set, params$job.label),
   cv_repeats = params$cv.repeats, impute_method = params$impute.method,
   suffix = "rds"
-) %>% print
+)
 
 models.list <- models.list.name %>% readRDS
 
 training_configuration_number <- models.list[[1]] %>% .$control %>% .$number
 training_configuration_repeats <- models.list[[1]] %>% .$control %>% .$repeats
-
+training_data_dimension <- models.list[[1]]$trainingData %>% dim
 ```
 
-Training the model on the training set with `r training_configuration_number`-fold cross-validation, repeated  `r training_configuration_repeats` times, yields the following results. Linear regression as benchmark reference is denoted as "lm".
+Training the model on the training set that contained `r training_data_dimension[1]` observations with `r training_configuration_number`-fold cross-validation, repeated  `r training_configuration_repeats` times, yields the following results. Linear regression as benchmark reference is denoted as "lm".
 
 ## 4.1 Training Set Performance
 
@@ -220,6 +217,7 @@ rank.lm.training.metric1 <- which(models.metrics$metric1.training$model == "lm")
 
 # display RMSE trainingset performance - table
 models.metrics$metric1.training %>% kable(caption = "training set performance: RMSE")
+
 ```
 
 In the benchmarking table above, linear regression ("lm") performs in `r metric1` on `r rank.lm.training.metric1`th rank of the selected machine learning models.
