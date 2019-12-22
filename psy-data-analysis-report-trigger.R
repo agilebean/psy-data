@@ -32,8 +32,8 @@ system.time(
 
     # select target and features
     target.label <- c("PERF10")
-    features.set.label <- c("big5items")
-    job.label <- c("R&D")
+    features.set.label <- c("big5composites")
+    job.label <- c("sales")
 
     output.filename <- output_filename(
       PREFIX,
