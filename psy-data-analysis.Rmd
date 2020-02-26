@@ -185,10 +185,10 @@ The machine learning models used in the benchmarking are:
 
 models.list.name <- output_filename(
   "data/models.list",
-  c(params$target.label, params$features.set, params$job.label),
-  cv_repeats = params$cv.repeats, impute_method = params$impute.method,
+  params$target.label, params$features.set, params$job.label,
+  paste0(params$cv.repeats, "repeats"), impute_method = params$impute.method,
   suffix = "rds"
-)
+) %>% print
 
 models.list <- models.list.name %>% readRDS
 

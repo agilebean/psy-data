@@ -25,7 +25,7 @@ IMPUTE.METHOD <- "noimpute"
 libraries <- c("dplyr", "tidyverse", "magrittr", "knitr", "machinelearningtools")
 sapply(libraries, require, character.only = TRUE)
 
-PREFIX <- "output/psy-data-analysis"
+PREFIX <- "results/psy-data-analysis"
 
 system.time(
   if (mode == "report.single") {
