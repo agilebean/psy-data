@@ -27,29 +27,39 @@ sapply(libraries, require, character.only = TRUE)
 
 PREFIX <- "results/psy-data-analysis"
 
+render_single_report <- function(target_label, features_set_label, job_label) {
+
+  output.filename <- output_filename(
+    PREFIX,
+    target_label, features_set_label, job_label,
+    paste0(CV.REPEATS, "repeats"), impute_method = IMPUTE.METHOD,
+    suffix = "pdf"
+  ) %>%
+    # tricky: avoid render error for special character (R\&D) in output_file
+    gsub("&", "", .)
+
+  rmarkdown::render(input = "psy-data-analysis.Rmd",
+                    params = list(target.label = target_label,
+                                  features.set = features_set_label,
+                                  job.label = job_label,
+                                  cv.repeats = CV.REPEATS,
+                                  impute.method = IMPUTE.METHOD),
+                    output_file = output.filename)
+}
+
 system.time(
   if (mode == "report.single") {
 
     # select target and features
     target.label <- c("PERF10")
     features.set.label <- c("big5composites")
-    job.label <- c("sales")
+    # job.label <- c("sales")
+    job.label <- c("all")
 
-    output.filename <- output_filename(
-      PREFIX,
-      c(target.label, features.set.label, job.label),
-      cv_repeats = CV.REPEATS, impute_method = IMPUTE.METHOD,
-      suffix = "pdf"
-    ) %>%
-      # tricky: avoid render error for special character (R\&D) in output_file
-      gsub("&", "", .)
-
-    system.time(
-      rmarkdown::render(input = "psy-data-analysis.Rmd",
-                        params = list(target.label = target.label,
-                                      features.set = features.set.label,
-                                      job.label = job.label),
-                        output_file = output.filename)
+    render_single_report(
+      target_label = target.label,
+      features_set_label = features.set.label,
+      job_label = job.label
     )
 
   } else if (mode == "report.all") {
@@ -65,28 +75,8 @@ system.time(
       job_label = job.labels.list
     ) %T>% print
 
-    render_report <- function(target_label, features_set_label, job_label) {
-
-      output.filename <- output_filename(
-        PREFIX,
-        c(target_label, features_set_label, job_label),
-        cv_repeats = CV.REPEATS, impute_method = IMPUTE.METHOD,
-        suffix = "pdf"
-      ) %>%
-        # tricky: avoid render error for special character (R\&D) in output_file
-        gsub("&", "", .)
-
-      rmarkdown::render(input = "psy-data-analysis.Rmd",
-                        params = list(target.label = target_label,
-                                      features.set = features_set_label,
-                                      job.label = job_label,
-                                      cv.repeats = CV.REPEATS,
-                                      impute.method = IMPUTE.METHOD),
-                        output_file = output.filename)
-    }
-
     system.time(
-      model.permutations.labels %>% pmap_chr(render_report)
+      model.permutations.labels %>% pmap_chr(render_single_report)
     )
   } # 142s/8 = 18s
 )
