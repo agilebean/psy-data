@@ -256,6 +256,7 @@ The variable importance can be calculated for linear regression, gradient boosti
 models.varimp <- models.list %>% 
   names %>% 
   str_detect("lm|glmnet|gbm|rf") %>%
+  # select specific list elements by name
   purrr::keep(models.list, .)
 
 visualize_importance <- function (importance_object) {

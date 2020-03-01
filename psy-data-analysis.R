@@ -8,8 +8,8 @@
 # clear the workspace
 rm(list=ls())
 
-mode <- "new"
-# mode <- "old"
+# mode <- "new"
+mode <- "old"
 
 # Important:
 # BEFORE script, sync the google drive folder, otherwise data will not be found!
@@ -56,9 +56,9 @@ nominal <- TRUE # with ordinal as NOMINAL factor
 seed <- 171
 
 # cross-validation repetitions
-CV.REPEATS <- 2
+# CV.REPEATS <- 2
 # CV.REPEATS <- 10
-# CV.REPEATS <- 100
+CV.REPEATS <- 100
 
 # try first x rows of training set
 # TRY.FIRST <- NULL
@@ -172,6 +172,11 @@ if (mode == "new") {
   # job_label <- "support"
   # # job_label <-  "all"
 
+  # desc stats
+  data.new %>%
+    group_by(job) %>%
+    tally() %>%
+    filter(job %in% c(1, 10))
 
   time.total <- system.time(
     ############ START
@@ -257,13 +262,13 @@ CV.REPEATS <- 100
 # prefix
 models.list.name <- output_filename(
   PREFIX,
-  c(target_label, features_set_label),
+  target_label, features_set_label,
   cv_repeats = CV.REPEATS, impute_method = IMPUTE.METHOD
-  )
+  ) %>% print
 
 # get model in model.permutations.labels by model index
 models.list <- readRDS(models.list.name)
-models.list <- readRDS("data/models.list.PERF10.big5items.100repeats.noimpute.rds")
+# models.list <- readRDS("data/models.list.PERF10.big5items.100repeats.noimpute.rds")
 
 
 # training set performance
