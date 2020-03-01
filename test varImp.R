@@ -76,6 +76,11 @@ visualize_importance <- function (importance_object) {
     xlab("item") + ylab("variable importance")
 }
 
+library(gbm)
+models.varimp %>% map(~caret::varImp(.))
+
+models.varimp$lm %>% caret::varImp()
+
 varimp.plots <- models.varimp %>%
   map(function(model) {
     require(gbm)
@@ -125,3 +130,4 @@ varImp(result)$importance %>%
   geom_bar(stat="identity") +
   coord_flip() +
   xlab("item") + ylab("variable importance")
+

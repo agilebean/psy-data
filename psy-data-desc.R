@@ -40,16 +40,18 @@ data.raw <- file.raw %>%
 
 dataset <- data.raw %>% select(job, gender, educa, prinum) %>% print
 
-
+# job type
 dataset %>%
   group_by(job) %>%
   tally()
 
+# gender
 dataset %>%
   group_by(gender) %>%
   tally() %>%
   mutate(perc = n/sum(n)*100)
 
+# age
 dataset %>%
   separate(prinum, c("year", "monthday"), sep = 2) %>%
   select(-monthday) %>%
@@ -57,13 +59,7 @@ dataset %>%
   mutate(age = 110 - as.numeric(year)) %>%
   psych::describe()
 
-
-dataset %>%
-  group_by(prinum) %>%
-  tally() %>%
-  mutate(perc = n/sum(n)*100)
-
-
+# education
 dataset %>%
   group_by(educa) %>%
   tally() %>%
