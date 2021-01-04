@@ -5,9 +5,6 @@
 # Sources:    SPSS File: "Personality-Performance-Turnover-Chaehan So.sav"
 #
 ################################################################################
-# clear the workspace
-rm(list=ls())
-
 # mode <- "new"
 mode <- "old"
 
@@ -18,14 +15,15 @@ mode <- "old"
 # detach("package:machinelearningtools", character.only = TRUE)
 # devtools::install_github("agilebean/machinelearningtools", force = TRUE)
 
-libraries <- c("magrittr"
-               , "sjlabelled" # read SPSS
-               , "caret", "doParallel"
-               , "RColorBrewer"
-               , "machinelearningtools"
-               , "knitr"
-               , "RPushbullet", "beepr"
-               , "tidyverse"
+libraries <- c(
+  "magrittr"
+  , "sjlabelled" # read SPSS
+  , "caret", "doParallel"
+  , "RColorBrewer"
+  , "machinelearningtools"
+  , "knitr"
+  , "RPushbullet", "beepr"
+  , "tidyverse"
 )
 sapply(libraries, require, character.only = TRUE)
 
@@ -69,7 +67,7 @@ TRY.FIRST <- 50
 SPLIT.RATIO <- 1.0
 
 # imputation method
-IMPUTE.METHOD <- NULL
+IMPUTE.METHOD <- "noimpute"
 # IMPUTE.METHOD <- "knnImpute"
 # IMPUTE.METHOD <- "bagImpute"
 
@@ -257,14 +255,15 @@ model.index = 1
 model.index.labels <- model.permutations.labels %>% .[model.index,] %T>% print
 target_label <- model.index.labels$target_label
 features_set_label <- model.index.labels$features_set_label
+job_label <- model.index.labels$job_label
 CV.REPEATS <- 100
 
 # prefix
 models.list.name <- output_filename(
   PREFIX,
-  target_label, features_set_label,
-  cv_repeats = CV.REPEATS, impute_method = IMPUTE.METHOD
-  ) %>% print
+  c(target_label, features_set_label, job_label),
+  paste0(CV.REPEATS, "repeats"), impute_method = IMPUTE.METHOD
+) %>% print
 
 # get model in model.permutations.labels by model index
 models.list <- readRDS(models.list.name)
