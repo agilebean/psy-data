@@ -141,7 +141,7 @@ if (mode == "new") {
   # 1. Data Acquistion - includes 2.2 Data Cleaning
   ###################################################
 
-  if (!is.null(IMPUTE.METHOD)) {
+  if (IMPUTE.METHOD != "noimpute") {
     dataset.label <- "data/dataset.rds" %>% print
   } else {
     dataset.label <- "data/dataset.NA.rds" %>% print
@@ -149,7 +149,7 @@ if (mode == "new") {
 
   data.new <- readRDS(dataset.label) %T>% print
 
-  if (!is.null(IMPUTE.METHOD)) {
+  if (IMPUTE.METHOD != "noimpute") {
 
     system.time(
       # tricky tricky: predict throws ERROR (variable is of class NULL)
@@ -297,6 +297,7 @@ pc <- dataset %>% prcomp
 models.metrics$metrics.testing
 # training vs. testing set performance: RMSE
 models.metrics$benchmark.all
+
 
 
 
