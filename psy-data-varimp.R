@@ -37,13 +37,14 @@ get_data_models_list <- function(models_labels) {
 
   # get model in model.permutations.labels by model index
   print(paste0("Reading file >> ", models.list.label))
-  models.list <- readRDS(models.list.name)
-  # models.list <- readRDS("data/models.list.PERF10.big5items.100repeats.noimpute.rds")
+  models.list <- readRDS(models.list.label)
+  # models.list <- readRDS("data/models.list.PERF10.big5items.all.100repeats.noimpute.rds")
 
   models.varimp <- models.list %>%
     names %>%
     # tricky: avoid glmnet by squeezing ^lm$
-    str_detect("^lm|gbm|rf$") %>%
+    # str_detect("^ranger|rf|gbm|lm$") %>%
+    str_detect("^rf|gbm|lm$") %>%
     # select specific list elements by name
     purrr::keep(models.list, .)
 
@@ -53,7 +54,8 @@ get_data_models_list <- function(models_labels) {
 ################################################################################
 # visualize feature importance
 ################################################################################
-create_plots_feature_importance <- function(models_list, data_labels) {
+create_plots_feature_importance <- function(
+  models_list, data_labels, width = 10, height = 10) {
 
   map2(
     models_list, names(models_list),
@@ -69,8 +71,8 @@ create_plots_feature_importance <- function(models_list, data_labels) {
           filename = filename,
           plot = .,
           dpi = 450,
-          width = 10,
-          height = 10
+          width = width,
+          height = height
         )
     })
 }
@@ -95,10 +97,13 @@ system.time(
   varimp.list <- create_plots_feature_importance(models.varimp, data.labels)
 )
 
-# models.varimp %>% get_model_metrics()
-varimp.list$gbm
-varimp.list$rf
-varimp.list$lm
+
+varimp.list$ranger
+models.varimp$ranger %>% varImp()
+# problem:
+# for varImp(), ranger needs explicit importance = "impurity" argument
+# -> implemented this in benchmark_algorithms on July 12, 2020:
+# https://github.com/agilebean/machinelearningtools/commit/427e0d5
 
 
 ################################################################################
@@ -114,16 +119,67 @@ data.labels.list <- model.permutations.labels %>%
   .$labels %>%
   set_names(model.permutations.labels$job_label)
 
+#########################################
+# create correlation matrices
+system.time(
+  correlation.list <-
+    map(data.labels.list,
+        function(data_labels) {
+          get_data_models_list(data_labels) %>%
+            purrr::keep(names(.) %in% c("rf")) %>%
+            map(.,
+              ~ print_correlation_table_from_model(.x, digits = 2)
+            )
+        })
+)
+
+correlation.list$all$rf$html.table
+
+map2(correlation.list, names(correlation.list),
+       function(jobtype_result, jobtype_label) {
+
+         model_object <- jobtype_result$rf
+         model_object$html.table %>%
+           cat(., file = paste0(
+             c("tables/corrtable", features.set.labels.list,
+               jobtype_label, model_object$method, "html"),
+             collapse = "."))
+  })
+
+#########################################
+# create feature importance plots
 system.time(
   result.list <-
     map(data.labels.list,
         function(data_labels) {
           get_data_models_list(data_labels) %>%
-            create_plots_feature_importance(., data_labels)
+            create_plots_feature_importance(
+              ., data_labels, width = 10, height = 4)
         }
     )
 )
-result.list
 
+#########################################
+# create feature importance tables
+varimp.list <- map(data.labels.list,
+    ~get_data_models_list(.x) %>%
+      map(., ~.x %>% visualize_importance(relative = TRUE, labels = TRUE))
+      )
+
+# for BigFive Factors (oo, cc, ee, aa, nn)
+options(digits = 3)
+varimp.list$`R&D`$lm$importance.table
+varimp.list$sales$gbm$importance.table
+varimp.list$support$gbm$importance.table
+varimp.list$all$gbm$importance.table
+
+# for BigFive Facets (oo1~5, cc1~5, ee1~5, aa1~5, nn1~5)
+options(digits = 2)
+varimp.list$`R&D`$rf$importance.table
+varimp.list$sales$rf$importance.table
+varimp.list$support$rf$importance.table
+varimp.list$all$rf$importance.table
+
+varimp.list %>% map(~ .x %>% .$importance.table)
 
 
