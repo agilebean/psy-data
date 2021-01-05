@@ -9,231 +9,121 @@
 # devtools::install_github("agilebean/machinelearningtools", force = TRUE)
 libraries <- c(
   "magrittr"
-  , "sjlabelled" # read SPSS
-  , "caret", "doParallel"
+  , "caret"
   , "RColorBrewer"
   , "machinelearningtools"
   , "knitr"
-  , "RPushbullet", "beepr"
   , "tidyverse"
 )
 sapply(libraries, require, character.only = TRUE)
 
-# target.label.list <- c("LIFE_S_R", "PERF09", "PERF10",  "PERF11")
-target.label.list <- c("PERF10")
-# target.label.list <- c("PERF09")
-# features.set.labels.list <- c("big5items", "big5composites")
-# features.set.labels.list <- c("big5composites")
-features.set.labels.list <- c("big5items")
-job.labels.list <- c("sales", "R&D", "support", "all")
+source("_labels.R")
 
-models.varimp <- models.list %>%
-  names %>%
-  str_detect("^lm|gbm|rf$") %>%
-  # select specific list elements by name
-  purrr::keep(models.list, .)
-
-model.permutations.labels <- crossing(
-  target_label = target.label.list,
-  features_set_label = features.set.labels.list,
-  job_label = job.labels.list
-)
-# model.permutations.labels <- model.permutations.labels[-c(1:3),]
-
-model.permutation.string <- model.permutations.labels %>%
-  pmap_chr(function(target_label, features_set_label, job_label) {
-    paste(target_label, features_set_label, job_label, sep = "-")
-  })
-
-# nominal <- FALSE # with ordinal as ORDERED factors
-nominal <- TRUE # with ordinal as NOMINAL factor
-
-seed <- 171
-
-# cross-validation repetitions
-# CV.REPEATS <- 2
-# CV.REPEATS <- 10
-CV.REPEATS <- 100
-
-# try first x rows of training set
-# TRY.FIRST <- NULL
-TRY.FIRST <- 50
-# TRY.FIRST <- 100
-
-# split ratio
-SPLIT.RATIO <- 1.0
-
-# imputation method
-IMPUTE.METHOD <- "noimpute"
-# IMPUTE.METHOD <- "knnImpute"
-# IMPUTE.METHOD <- "bagImpute"
-
-# prefix
-PREFIX <- "data/models.list"
-# PREFIX <- "data/testruns/models.list"
+getOption("digits")
 
 model.permutations.labels
-# get model in model.permutations.list by model index
-model.index = 1
-model.index.labels <- model.permutations.labels %>% .[model.index,] %T>% print
-target_label <- model.index.labels$target_label
-features_set_label <- model.index.labels$features_set_label
-job_label <- model.index.labels$job_label
-CV.REPEATS <- 100
-
-# prefix
-models.list.name <- output_filename(
-  PREFIX,
-  c(target_label, features_set_label, job_label),
-  paste0(CV.REPEATS, "repeats"), impute_method = IMPUTE.METHOD
-) %>% print
-
-# get model in model.permutations.labels by model index
-models.list <- readRDS(models.list.name)
-# models.list <- readRDS("data/models.list.PERF10.big5items.100repeats.noimpute.rds")
 
 
 ################################################################################
-# correlation matrix
+# get data of models.list
 ################################################################################
-data.input <- models.varimp[[1]]$trainingData %>%
-  select(JobPerf = .outcome, everything()) %>%
-  as_tibble() %T>% print
+get_data_models_list <- function(models_labels) {
 
-# 1) for final table, move all variable names to rows
-data.transposed <- data.input %>%
-  tibble::rownames_to_column() %>%
-  pivot_longer(-rowname) %>%
-  pivot_wider(
-    # id_cols = name,
-    names_from=rowname,
-    values_from=value) %T>% print
+  # get models label
+  models.list.label <- output_filename(
+    PREFIX, models_labels,
+    paste0(CV.REPEATS, "repeats"), impute_method = IMPUTE.METHOD
+  )
 
-# must set digits = 4 for mean() to return 3 decimals
-getOption("digits")
-options(digits = 4)
+  # get model in model.permutations.labels by model index
+  print(paste0("Reading file >> ", models.list.label))
+  models.list <- readRDS(models.list.name)
+  # models.list <- readRDS("data/models.list.PERF10.big5items.100repeats.noimpute.rds")
 
-# 2) calc mean+sd on data in rows
-data.stats <- data.transposed %>%
-  # move data from original column vectors into row data
-  nest(data = -name) %>%
-  # create vectors from row data
-  mutate(data = map(data, ~t(.x) %>% as.numeric)) %>%
-  # calculate summary stats
-  mutate(
-    mean = map(data, ~mean(.x)),
-    sd = map(data, ~sd(.x))
-  ) %>%
-  unnest(mean, sd) %>%
-  select(-data) %>% print
+  models.varimp <- models.list %>%
+    names %>%
+    # tricky: avoid glmnet by squeezing ^lm$
+    str_detect("^lm|gbm|rf$") %>%
+    # select specific list elements by name
+    purrr::keep(models.list, .)
 
-data.stats$mean # 3 digits yippee
-
-# 3) create correlation matrix
-data.cor <- cor(data.input) %>%
-  as.data.frame() %>%
-  rownames_to_column() %T>% print
-
-# 4) final table: merge desc stats with correlation matrix
-data.table <- merge(data.stats, data.cor,
-      by.x = "name", by.y = "rowname",
-      sort = FALSE
-      ) %>%
-  as_tibble() %T>% print
-
-# 5) print final table
-data.table %>%
-  knitr::kable(format = "html", digits = 3) %>%
-  kableExtra::kable_styling(bootstrap_options = c("bordered", "hover")) %>% print
-
+  return(models.varimp)
+}
 
 ################################################################################
 # visualize feature importance
 ################################################################################
-models.varimp <- models.list %>%
-  names %>%
-  str_detect("lm|glmnet|gbm|rf") %>%
-  # select specific list elements by name
-  purrr::keep(models.list, .)
+create_plots_feature_importance <- function(models_list, data_labels) {
 
-visualize_importance <- function (
-  importance_object, relative = FALSE, labels = FALSE) {
+  map2(
+    models_list, names(models_list),
+    function(model, model_label) {
 
-  require(gbm)
-  # importance_object <- models.varimp$rf %>% varImp
-  # importance_object %>% class
-
-  unit.label <- ifelse(relative, "%RI", "importance") %T>% print
-  unit.variable <- rlang::sym(unit.label)
-
-
-  if (class(importance_object) == "varImp.train") {
-    importance_object %<>% .$importance
-  }
-  if (!hasName(importance_object, "rowname")) {
-    importance_object %<>% rownames_to_column()
-  }
-
-  importance.table <- importance_object %>%
-    rename(variable = rowname, importance = Overall) %>%
-    arrange(desc(importance)) %>%
-    {
-      if (relative) {
-        mutate(., `%RI` = importance/sum(importance)*100) %>%
-          select(variable, `%RI`)
-      } else {
-        .
-      }
-    } %T>% print
-
-  importance.plot <- importance.table %>%
-    set_names(c("variable", unit.label)) %>%
-    ggplot(data = .,
-           aes(x = reorder(variable, !!unit.variable), y = !!unit.variable)) +
-    theme_minimal() +
-    geom_bar(stat = "identity", fill = "#114151") +
-    {
-      if (labels) {
-        geom_text(aes(label = round(!!unit.variable, digits = 2)),
-                  # width = 3,
-                  position = position_dodge(width = 5),
-                  hjust = -0.1,
-                  check_overlap = TRUE
-                  )
-      }
-    } +
-    coord_flip() +
-    theme(axis.title = element_text(size = 12),
-          axis.text = element_text(size = 12)) +
-    # scale_y_continuous(expand = c(0, 0), limits = c(0, 102)) +
-    labs(
-      x = "item",
-      y = unit.label
-    )
-
-  return(
-    list(
-      importance.table = importance.table,
-      importance.plot = importance.plot
-    ))
+      filename <- paste0(c("figures/importance",
+                           data_labels, model_label, "png"),
+                        collapse = ".") %>% print
+      model %>%
+        visualize_importance(relative = TRUE, labels = TRUE) %>%
+        .$importance.plot %>%
+        ggsave(
+          filename = filename,
+          plot = .,
+          dpi = 450,
+          width = 10,
+          height = 10
+        )
+    })
 }
 
+################################################################################
+# MAIN: single model
+################################################################################
+# 1) get config: from model.permutations.list by model index
+model.index = 1
+data.labels <- model.permutations.labels[model.index,] %>%
+  unlist() %>% as.vector() %T>% print
+
+# 2) get data
+models.varimp <- get_data_models_list(data.labels)
+
+# 3) correlation matrix
+models.varimp$gbm %>%
+  print_correlation_table_from_model(digits = 2)
+
+# 4) visualize feature importance
 system.time(
-  varimp.list <- models.varimp %>%
-    map(function(model) {
-      model %>% varImp %>%
-        # visualize_importance(relative = TRUE)
-        visualize_importance(relative = TRUE, labels = TRUE)
-      # visualize_importance()
-    })
+  varimp.list <- create_plots_feature_importance(models.varimp, data.labels)
 )
 
 # models.varimp %>% get_model_metrics()
-varimp.list$lm
-varimp.list$glmnet
 varimp.list$gbm
 varimp.list$rf
+varimp.list$lm
 
+
+################################################################################
+# MAIN: all models
+################################################################################
+# 1) get config: from model.permutations.list by model index
+data.labels.list <- model.permutations.labels %>%
+  group_by(row_number()) %>%
+  nest() %>%
+  mutate(
+    labels = map(data, ~ unlist(.x) %>% as.vector)
+  ) %>%
+  .$labels %>%
+  set_names(model.permutations.labels$job_label)
+
+system.time(
+  result.list <-
+    map(data.labels.list,
+        function(data_labels) {
+          get_data_models_list(data_labels) %>%
+            create_plots_feature_importance(., data_labels)
+        }
+    )
+)
+result.list
 
 
 
