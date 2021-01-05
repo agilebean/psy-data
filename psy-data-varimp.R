@@ -29,7 +29,7 @@ job.labels.list <- c("sales", "R&D", "support", "all")
 
 models.varimp <- models.list %>%
   names %>%
-  str_detect("lm|glmnet|gbm|rf") %>%
+  str_detect("^lm|gbm|rf$") %>%
   # select specific list elements by name
   purrr::keep(models.list, .)
 
@@ -92,6 +92,64 @@ models.list.name <- output_filename(
 models.list <- readRDS(models.list.name)
 # models.list <- readRDS("data/models.list.PERF10.big5items.100repeats.noimpute.rds")
 
+
+################################################################################
+# correlation matrix
+################################################################################
+data.input <- models.varimp[[1]]$trainingData %>%
+  select(JobPerf = .outcome, everything()) %>%
+  as_tibble() %T>% print
+
+# 1) for final table, move all variable names to rows
+data.transposed <- data.input %>%
+  tibble::rownames_to_column() %>%
+  pivot_longer(-rowname) %>%
+  pivot_wider(
+    # id_cols = name,
+    names_from=rowname,
+    values_from=value) %T>% print
+
+# must set digits = 4 for mean() to return 3 decimals
+getOption("digits")
+options(digits = 4)
+
+# 2) calc mean+sd on data in rows
+data.stats <- data.transposed %>%
+  # move data from original column vectors into row data
+  nest(data = -name) %>%
+  # create vectors from row data
+  mutate(data = map(data, ~t(.x) %>% as.numeric)) %>%
+  # calculate summary stats
+  mutate(
+    mean = map(data, ~mean(.x)),
+    sd = map(data, ~sd(.x))
+  ) %>%
+  unnest(mean, sd) %>%
+  select(-data) %>% print
+
+data.stats$mean # 3 digits yippee
+
+# 3) create correlation matrix
+data.cor <- cor(data.input) %>%
+  as.data.frame() %>%
+  rownames_to_column() %T>% print
+
+# 4) final table: merge desc stats with correlation matrix
+data.table <- merge(data.stats, data.cor,
+      by.x = "name", by.y = "rowname",
+      sort = FALSE
+      ) %>%
+  as_tibble() %T>% print
+
+# 5) print final table
+data.table %>%
+  knitr::kable(format = "html", digits = 3) %>%
+  kableExtra::kable_styling(bootstrap_options = c("bordered", "hover")) %>% print
+
+
+################################################################################
+# visualize feature importance
+################################################################################
 models.varimp <- models.list %>%
   names %>%
   str_detect("lm|glmnet|gbm|rf") %>%
@@ -170,10 +228,12 @@ system.time(
     })
 )
 
+# models.varimp %>% get_model_metrics()
 varimp.list$lm
 varimp.list$glmnet
 varimp.list$gbm
 varimp.list$rf
 
-tables.varimp <- models.varimp %>% map(~varImp(.)) %T>% print
-tables.varimp$gbm %>% class
+
+
+
