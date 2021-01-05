@@ -98,7 +98,8 @@ models.varimp <- models.list %>%
   # select specific list elements by name
   purrr::keep(models.list, .)
 
-visualize_importance <- function (importance_object, relative = FALSE) {
+visualize_importance <- function (
+  importance_object, relative = FALSE, labels = FALSE) {
 
   require(gbm)
   # importance_object <- models.varimp$rf %>% varImp
@@ -133,6 +134,16 @@ visualize_importance <- function (importance_object, relative = FALSE) {
            aes(x = reorder(variable, !!unit.variable), y = !!unit.variable)) +
     theme_minimal() +
     geom_bar(stat = "identity", fill = "#114151") +
+    {
+      if (labels) {
+        geom_text(aes(label = round(!!unit.variable, digits = 2)),
+                  # width = 3,
+                  position = position_dodge(width = 5),
+                  hjust = -0.1,
+                  check_overlap = TRUE
+                  )
+      }
+    } +
     coord_flip() +
     theme(axis.title = element_text(size = 12),
           axis.text = element_text(size = 12)) +
@@ -149,18 +160,20 @@ visualize_importance <- function (importance_object, relative = FALSE) {
     ))
 }
 
-
-tables.varimp <- models.varimp %>% map(~varImp(.)) %T>% print
-
-varimp.list <- models.varimp %>%
-  map(function(model) {
-    model %>% varImp %>% visualize_importance()
-  })
-
-varimp.list
+system.time(
+  varimp.list <- models.varimp %>%
+    map(function(model) {
+      model %>% varImp %>%
+        # visualize_importance(relative = TRUE)
+        visualize_importance(relative = TRUE, labels = TRUE)
+      # visualize_importance()
+    })
+)
 
 varimp.list$lm
 varimp.list$glmnet
 varimp.list$gbm
 varimp.list$rf
 
+tables.varimp <- models.varimp %>% map(~varImp(.)) %T>% print
+tables.varimp$gbm %>% class
