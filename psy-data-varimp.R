@@ -51,11 +51,13 @@ get_data_models_list <- function(models_labels) {
   return(models.varimp)
 }
 
+
 ################################################################################
 # visualize feature importance
 ################################################################################
 create_plots_feature_importance <- function(
-  models_list, data_labels, width = 10, height = 10) {
+  models_list, data_labels, save = FALSE,
+  width = 10, height = 10, axis_limit = NULL) {
 
   map2(
     models_list, names(models_list),
@@ -65,15 +67,23 @@ create_plots_feature_importance <- function(
                            data_labels, model_label, "png"),
                         collapse = ".") %>% print
       model %>%
-        visualize_importance(relative = TRUE, labels = TRUE) %>%
+        visualize_importance(relative = TRUE, labels = TRUE,
+                             axis_limit = axis_limit) %T>%
+        { print(.$importance.table) } %>%
         .$importance.plot %>%
-        ggsave(
-          filename = filename,
-          plot = .,
-          dpi = 450,
-          width = width,
-          height = height
-        )
+        {
+          if (save) {
+            ggsave(
+              filename = filename,
+              plot = .,
+              dpi = 450,
+              width = width,
+              height = height
+            )
+          } else {
+            .
+          }
+        }
     })
 }
 
@@ -94,12 +104,16 @@ models.varimp$gbm %>%
 
 # 4) visualize feature importance
 system.time(
-  varimp.list <- create_plots_feature_importance(models.varimp, data.labels)
+  varimp.list <- create_plots_feature_importance(
+    models.varimp, data.labels,
+    # save = TRUE,
+    axis_limit = 25.5)
 )
 
 
-varimp.list$ranger
-models.varimp$ranger %>% varImp()
+
+varimp.list$gbm
+models.varimp$gbm %>% varImp()
 # problem:
 # for varImp(), ranger needs explicit importance = "impurity" argument
 # -> implemented this in benchmark_algorithms on July 12, 2020:
@@ -154,10 +168,15 @@ system.time(
         function(data_labels) {
           get_data_models_list(data_labels) %>%
             create_plots_feature_importance(
-              ., data_labels, width = 10, height = 4)
+              ., data_labels,
+              save = TRUE,
+              # width = 7, height = 3, axis_limit = 103 # composites
+              width = 6, height = 6, axis_limit = 26 # items
+              )
         }
     )
 )
+
 
 #########################################
 # create feature importance tables
@@ -167,14 +186,14 @@ varimp.list <- map(data.labels.list,
       )
 
 # for BigFive Factors (oo, cc, ee, aa, nn)
-options(digits = 3)
+# options(digits = 3)
 varimp.list$`R&D`$lm$importance.table
 varimp.list$sales$gbm$importance.table
 varimp.list$support$gbm$importance.table
 varimp.list$all$gbm$importance.table
 
 # for BigFive Facets (oo1~5, cc1~5, ee1~5, aa1~5, nn1~5)
-options(digits = 2)
+# options(digits = 2)
 varimp.list$`R&D`$rf$importance.table
 varimp.list$sales$rf$importance.table
 varimp.list$support$rf$importance.table
