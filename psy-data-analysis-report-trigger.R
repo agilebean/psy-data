@@ -1,14 +1,11 @@
 ################################################################################
-# Class:      Psychology Collaboration
-# Topic:      Tenure and Job Performance
+# Paper:      Psy-paper
+# Target:     Job Performance
 #
 # Sources:    SPSS File: "Personality-Performance-Turnover-Chaehan So.sav"
 #
 ################################################################################
-# clear the workspace
-rm(list=ls())
-
-# mode <- "report.single"
+mode <- "report.single"
 mode <- "report.all"
 
 # CV.REPEATS <- 10
@@ -66,7 +63,6 @@ system.time(
 
     target.label.list <- c("PERF10")
     features.set.labels.list <- c("big5items", "big5composites")
-    # features.set.labels.list <- c("big5composites")
     job.labels.list <- c("sales", "R&D", "support", "all")
 
     model.permutations.labels <- crossing(

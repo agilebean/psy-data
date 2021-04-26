@@ -12,7 +12,7 @@ params:
   target.label: "PERF10"
   # features.set: "big5items"
   features.set: "big5composites"
-  job.label: "sales"
+  job.label: "all"
   split.ratio: 1.0
   cv.repeats: 100
   # cv.repeats: 10
@@ -141,7 +141,7 @@ features.labels
 # 3. Train Model
 # 3-1: Select a model
 # 3-2: Select the target, features, training data
-# 3-3: Train the model with the target and features
+# 3-3: Tr ain the model with the target and features
 ################################################################################
 
 ########################################
@@ -152,10 +152,10 @@ algorithm.list <- c(
   "knn",
   "gbm",
   "rf",
-  "ranger",
-  "xgbTree",
-  "XgbLinear",
-  "svmLinear",
+  # "ranger",
+  # "xgbTree",
+  # "XgbLinear",
+  # "svmLinear",
   "svmRadial"
 )
 
@@ -165,18 +165,18 @@ The machine learning models used in the benchmarking are:
 
 **Linear models:**
   | "lm": linear regression (benchmarking baseline)
-  | "glmnet": linear regression - gaussian kernel
-  | "xgbLinear": extreme gradient boosting  - linear kernel
-  | "svmLinear": support vector machines - linear kernel
+  <!-- | "glmnet": linear regression - gaussian kernel -->
+  <!-- | "xgbLinear": extreme gradient boosting  - linear kernel -->
+  <!-- | "svmLinear": support vector machines - linear kernel -->
   
 **Tree-based models:**
   | "gbm": gradient boosting machines
-  | "xgbTree": extreme gradient boosting - tree kernel
+  <!-- | "xgbTree": extreme gradient boosting - tree kernel -->
   | "rf", "ranger": random forests
   
 **Other non-linear models:**
   | "knn", "kknn: k nearest neighbors
-  | "svmRadial": support vector machines - radial kernel
+  <!-- | "svmRadial": support vector machines - radial kernel -->
 
 \newpage
 
@@ -204,102 +204,120 @@ Training the model on the training set that contained `r training_data_dimension
 ```{r trainingset calculation, cache=TRUE, echo=FALSE}
 
 # get model metrics
-models.metrics <- models.list %>% get_model_metrics
+models.metrics <- models.list %>% 
+  # select 1 implementation per algorithm
+  list_modify(
+    glmnet = NULL,
+    kknn = NULL,
+    xgbTree = NULL,
+    xgbLinear = NULL,
+    svmLinear = NULL,
+    ranger = NULL
+  ) %>% 
+  # rename to publication labels - TODO: use label
+  set_names(c("LR", "kNN", "GBM", "RF", "SVM", "target.label")) %>% 
+  get_model_metrics 
+
 models.list %<>% purrr::list_modify(target.label = NULL, testing.set = NULL)
 
-# models.metrics$RMSE.training %>% filter(str_detect(model, "^lm$"))
-metric1 <- models.metrics$metric1.training %>% select(2) %>% names %>% gsub(".mean", "", .)
-metric2 <- models.metrics$metric1.training %>% select(2) %>% names %>% gsub(".mean", "", .)
-rank.lm.training.metric1 <- which(models.metrics$metric1.training$model == "lm")
-
-# get_metric_from_resamples
-# models.metrics$metric1.training %>% arrange(RMSE.mean)
-
-# display RMSE trainingset performance - table
-models.metrics$metric1.training %>% kable(caption = "training set performance: RMSE")
-
+# # models.metrics$RMSE.training %>% filter(str_detect(model, "^lm$"))
+# metric1 <- models.metrics$metric1.training %>% select(2) %>% names %>% gsub(".mean", "", .)
+# metric2 <- models.metrics$metric1.training %>% select(2) %>% names %>% gsub(".mean", "", .)
+# # rank.lm.training.metric1 <- which(models.metrics$metric1.training$model == "lm")
+metric3 <- models.metrics$metric3.training %>% select(2) %>% names %>% gsub(".mean", "", .)
+rank.lm.training.metric3 <- which(models.metrics$metric3.training$model == "lm")
+# 
+# # get_metric_from_resamples
+# # models.metrics$metric1.training %>% arrange(RMSE.mean)
+# 
+# # display RMSE trainingset performance - table
+# models.metrics$metric1.training %>% kable(caption = "training set performance: RMSE")
+# 
+# # display R trainingset performance - table
+# models.metrics$metric3.training %>% kable(caption = "training set performance: R")
 ```
 
-In the benchmarking table above, linear regression ("lm") performs in `r metric1` on `r rank.lm.training.metric1`th rank of the selected machine learning models.
+In the benchmarking table above, linear regression ("lm") performs in `r metric3` on `r rank.lm.training.metric3`th rank of the selected machine learning models.
 
 
-```{r trainingset metric1 boxplots,fig.width=7, fig.height=4.8, cache=TRUE, echo=FALSE}
+
+<!-- \newpage -->
+
+```{r trainingset metric2 , cache=FALSE}
+models.metrics$metric3.training %>% kable(caption = "training set performance: R")
+
+rank.lm.training.metric3 <- which(models.metrics$metric3.training$model == "lm")
+```
+
+In the benchmarking table above, linear regression ("lm") performs in `r metric3` on `r rank.lm.training.metric3`th  rank of the selected machine learning models.
+
+```{r trainingset metric2 boxplots,fig.width=7, fig.height=5, cache=TRUE, fig.align='center'}
+# # display Rsquared trainingset performance - boxplots
+# models.metrics$metric2.resamples.boxplots
+
+# display R trainingset performance - boxplots
+models.metrics$metric3.resamples.boxplots
+
+```
+```{r trainingset metric1 boxplots,fig.width=7, fig.height=5, cache=TRUE, echo=FALSE, fig.align='center'}
 # display RMSE trainingset performance - boxplots
 models.metrics$metric1.resamples.boxplots
 # models.metrics$metric1.resamples.boxplots + 
 #   theme(text = element_text(family = 'Gill Sans'))
-```
-\newpage
-
-```{r trainingset metric2 , cache=FALSE}
-# display Rsquared trainingset performance - table
-models.metrics$metric2.training %>% kable(caption = "training set performance: Rsquared")
-
-# models.metrics$metric2.resamples.boxplots +
-#   theme(text = element_text(family = 'Gill Sans'))
-rank.lm.training.metric2 <- which(models.metrics$metric2.training$model == "lm")
-```
-
-In the benchmarking table above, linear regression ("lm") performs in `r metric2` on `r rank.lm.training.metric2`th  rank of the selected machine learning models.
-
-```{r trainingset metric2 boxplots,fig.width=7, fig.height=5, cache=TRUE}
-# display Rsquared trainingset performance - boxplots
-models.metrics$metric2.resamples.boxplots
 
 ```
-
-\newpage
-## 4.4 Variable Importance
-The variable importance can be calculated for linear regression, gradient boosting machines and random forests only. The scores are normalized with 100 for the maximum variable importance among all predictors. 
+<!-- \newpage -->
+<!-- ## 4.4 Variable Importance -->
+<!-- The variable importance can be calculated for linear regression, gradient boosting machines and random forests only. The scores are normalized with 100 for the maximum variable importance among all predictors.  -->
 
 ``` {r variable importance, fig.width=WIDTH.varimp, fig.height=HEIGHT.varimp, cache=TRUE}
-models.varimp <- models.list %>% 
-  names %>% 
-  str_detect("lm|glmnet|gbm|rf") %>%
-  # select specific list elements by name
-  purrr::keep(models.list, .)
-
-visualize_importance <- function (importance_object) {
-
-  if (class(importance_object) == "varImp.train") {
-    importance_object %<>% .$importance
-  }
-  if (!hasName(importance_object, "rowname")) {
-    importance_object %<>% rownames_to_column()
-  }
-
-  importance_object %>%
-    setNames(c("variable", "Importance")) %>%
-    ggplot(data = ., aes(x = reorder(variable, Importance), y = Importance)) +
-    theme_minimal() +
-    geom_bar(stat = "identity", fill = "#114151") +
-    coord_flip() +
-    theme(axis.title = element_text(size = 12),
-          axis.text = element_text(size = 12)) +
-    scale_y_continuous(expand = c(0, 0), limits = c(0, 102)) +
-    xlab("item") + ylab("variable importance")
-}
-
-library(gbm)
-tables.varimp <- models.varimp %>% map(~varImp(.))
-
-varimp.plots <- models.varimp %>%
-  map(function(model) {
-    require(gbm)
-    model %>% varImp %>% visualize_importance()
-  })
-
-tables.varimp$lm
-varimp.plots$lm
-
-tables.varimp$glm
-varimp.plots$glm
-
-tables.varimp$gbm
-varimp.plots$gbm
-
-tables.varimp$rf
-varimp.plots$rf
+# models.varimp <- models.list %>% 
+#   names %>% 
+#   str_detect("lm|glmnet|gbm|rf") %>%
+#   # select specific list elements by name
+#   purrr::keep(models.list, .)
+# 
+# visualize_importance <- function (importance_object) {
+# 
+#   if (class(importance_object) == "varImp.train") {
+#     importance_object %<>% .$importance
+#   }
+#   if (!hasName(importance_object, "rowname")) {
+#     importance_object %<>% rownames_to_column()
+#   }
+# 
+#   importance_object %>%
+#     setNames(c("variable", "Importance")) %>%
+#     ggplot(data = ., aes(x = reorder(variable, Importance), y = Importance)) +
+#     theme_minimal() +
+#     geom_bar(stat = "identity", fill = "#114151") +
+#     coord_flip() +
+#     theme(axis.title = element_text(size = 12),
+#           axis.text = element_text(size = 12)) +
+#     scale_y_continuous(expand = c(0, 0), limits = c(0, 102)) +
+#     xlab("item") + ylab("variable importance")
+# }
+# 
+# library(gbm)
+# tables.varimp <- models.varimp %>% map(~varImp(.))
+# 
+# varimp.plots <- models.varimp %>%
+#   map(function(model) {
+#     require(gbm)
+#     model %>% varImp %>% visualize_importance()
+#   })
+# 
+# tables.varimp$lm
+# varimp.plots$lm
+# 
+# tables.varimp$glm
+# varimp.plots$glm
+# 
+# tables.varimp$gbm
+# varimp.plots$gbm
+# 
+# tables.varimp$rf
+# varimp.plots$rf
 
 ```
 
