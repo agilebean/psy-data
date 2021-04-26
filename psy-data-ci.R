@@ -22,6 +22,8 @@ IMPUTE.METHOD <- "noimpute"
 libraries <- c("dplyr", "tidyverse", "magrittr", "knitr", "machinelearningtools")
 sapply(libraries, require, character.only = TRUE)
 
+source("_labels.R")
+
 PREFIX <- "results/psy-data-analysis"
 
 
@@ -46,7 +48,7 @@ read_model_list <- function(
       svmLinear = NULL,
       ranger = NULL) %>%
     list_modify(target.label = NULL, testing.set = NULL) %>%
-    set_names(c("LR", "kNN", "GBM", "RF", "SVM"))
+    set_names(models.labels.published)
 
   return(models.list.select)
 
@@ -182,7 +184,7 @@ system.time(
                 collapse = ".")
             )
         )
-    ) # R: 11s/10rep, 22.3s/1000rep, 96.3/10e4rep
+    ) # R: 11s/10rep, 22.3s/1000rep, 484s/10e4rep
     # RMSE: 498s/10e4rep
   }
 )
