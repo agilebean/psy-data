@@ -5,7 +5,7 @@
 # Sources:    SPSS File: "Personality-Performance-Turnover-Chaehan So.sav"
 #
 ################################################################################
-mode <- "report.single"
+# mode <- "report.single"
 mode <- "report.all"
 
 # CV.REPEATS <- 10
@@ -22,12 +22,14 @@ IMPUTE.METHOD <- "noimpute"
 libraries <- c("dplyr", "tidyverse", "magrittr", "knitr", "machinelearningtools")
 sapply(libraries, require, character.only = TRUE)
 
-PREFIX <- "results/psy-data-analysis"
+PREFIX.results <- "results/psy-data-analysis"
+
+source("_labels.R")
 
 render_single_report <- function(target_label, features_set_label, job_label) {
 
   output.filename <- output_filename(
-    PREFIX,
+    PREFIX.results,
     target_label, features_set_label, job_label,
     paste0(CV.REPEATS, "repeats"), impute_method = IMPUTE.METHOD,
     suffix = "pdf"
@@ -61,18 +63,8 @@ system.time(
 
   } else if (mode == "report.all") {
 
-    target.label.list <- c("PERF10")
-    features.set.labels.list <- c("big5items", "big5composites")
-    job.labels.list <- c("sales", "R&D", "support", "all")
-
-    model.permutations.labels <- crossing(
-      target_label = target.label.list,
-      features_set_label = features.set.labels.list,
-      job_label = job.labels.list
-    ) %T>% print
-
     system.time(
       model.permutations.labels %>% pmap_chr(render_single_report)
     )
-  } # 142s/8 = 18s
+  } # 123s/8 = 18s
 )

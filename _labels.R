@@ -1,9 +1,9 @@
 # target.label.list <- c("LIFE_S_R", "PERF09", "PERF10",  "PERF11")
 target.label.list <- c("PERF10")
 # target.label.list <- c("PERF09")
-# features.set.labels.list <- c("big5items", "big5composites")
+features.set.labels.list <- c("big5items", "big5composites")
 # features.set.labels.list <- c("big5composites")
-features.set.labels.list <- c("big5items")
+# features.set.labels.list <- c("big5items")
 job.labels.list <- c("sales", "R&D", "support", "all")
 
 
@@ -12,9 +12,8 @@ model.permutations.labels <- crossing(
   features_set_label = features.set.labels.list,
   job_label = job.labels.list
 )
-# model.permutations.labels <- model.permutations.labels[-c(1:3),]
 
-model.permutation.string <- model.permutations.labels %>%
+model.permutations.string <- model.permutations.labels %>%
   pmap_chr(function(target_label, features_set_label, job_label) {
     paste(target_label, features_set_label, job_label, sep = "-")
   })
@@ -57,3 +56,11 @@ color.scheme <- c(
   "GBM" = "#E69F00",
   "LR" = "#0072B2"
 )
+
+# color.scheme <- c(
+#   "kNN" = "#A3A500",
+#   "SVM" = "#39B600",
+#   "RF" = "#00C19C",
+#   "GBM" = "#00B6EA",
+#   "LR" = "darkgrey"
+# )

@@ -27,26 +27,7 @@ libraries <- c(
 )
 sapply(libraries, require, character.only = TRUE)
 
-# target.label.list <- c("LIFE_S_R", "PERF09", "PERF10",  "PERF11")
-target.label.list <- c("PERF10")
-# target.label.list <- c("PERF09")
-# features.set.labels.list <- c("big5items", "big5composites")
-# features.set.labels.list <- c("big5composites")
-features.set.labels.list <- c("big5items")
-job.labels.list <- c("sales", "R&D", "support", "all")
-# job.labels.list <- c("all")
-
-model.permutations.labels <- crossing(
-  target_label = target.label.list,
-  features_set_label = features.set.labels.list,
-  job_label = job.labels.list
-  )
-# model.permutations.labels <- model.permutations.labels[-c(1:3),]
-
-model.permutation.string <- model.permutations.labels %>%
-  pmap_chr(function(target_label, features_set_label, job_label) {
-    paste(target_label, features_set_label, job_label, sep = "-")
-  })
+source("_labels.R")
 
 # nominal <- FALSE # with ordinal as ORDERED factors
 nominal <- TRUE # with ordinal as NOMINAL factor
@@ -244,7 +225,7 @@ if (mode == "new") {
         return(models.list)
       })
     ############ END
-  ) %T>% { push_message(.["elapsed"], model.permutation.string ) }
+  ) %T>% { push_message(.["elapsed"], model.permutations.string ) }
 
 }
 
