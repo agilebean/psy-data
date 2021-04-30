@@ -15,7 +15,7 @@ model.permutations.labels <- crossing(
 
 model.permutations.string <- model.permutations.labels %>%
   pmap_chr(function(target_label, features_set_label, job_label) {
-    paste(target_label, features_set_label, job_label, sep = "-")
+    paste(target_label, features_set_label, job_label, sep = ".")
   })
 
 # nominal <- FALSE # with ordinal as ORDERED factors
