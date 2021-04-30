@@ -1,0 +1,139 @@
+---
+output: 
+  pdf_document: 
+    fig_caption: true
+    fig_width: 6
+    fig_height: 4
+
+params:
+  date: !r Sys.Date()
+  # target.label: "PERF.all"
+  target.label: "PERF09"
+  # features.set: "big5items"
+  features.set: "big5composites"
+  split.ratio: 0.80
+  cv.repeats: 100
+  # cv.repeats: 10
+  impute.method: "noimpute"
+  # impute.method: "medianImpute"
+
+title: "Job Performance Analysis with
+        target = `r params$target.label` and features set = `r params$features.set`"
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+# knitr::opts_knit$set(global.par = TRUE)
+options(digits = 3)
+
+# devtools::install_github("agilebean/machinelearningtools", force = TRUE)
+# unloadNamespace("machinelearningtools")
+# load libraries
+libraries <- c("dplyr", "magrittr", "tidyverse"
+               , "sjlabelled" # read SPSS
+               , "caret", "doParallel"
+               , "DataExplorer", "RColorBrewer"
+               , "machinelearningtools"
+               , "knitr", "pander"
+)
+sapply(libraries, require, character.only = TRUE)
+
+if (params$impute.method == "noimpute") {
+  dataset.label <- "data/dataset.rds" %>% print
+} else {
+  dataset.label <- "data/dataset.NA.rds" %>% print
+}
+
+# nominal <- FALSE # with ordinal as ORDERED factors
+nominal <- TRUE # with ordinal as NOMINAL factor
+
+seed <- 17
+
+get_features <- function(target_label, features_set, data_set) {
+  
+  data_set %>% 
+    select(-target_label,
+           -starts_with("TO"),
+           -starts_with("PERF")
+    ) %>% 
+    {
+      if (features_set == "big5items") {
+        # remove composite scores - equivalent to (-nn, -ee, -oo, -aa, -cc)
+        select(., -matches("(oo|cc|ee|aa|nn)$")) 
+        
+      } else if (features_set == "big5composites") {
+        # remove Big5 items
+        select(., -matches(".*(1|2|3|4|5|6)"))
+        
+      } else { . }
+    } %>% 
+    names %T>% print
+}
+```
+
+
+
+```{r get model, cache=TRUE, include=TRUE}
+print(params$target.label)
+print(params$features.set)
+
+models.list.name <- paste0(c("data/models.list", 
+                          params$target.label, 
+                          params$features.set,
+                          paste0(params$cv.repeats, "repeats"),
+                          params$impute.method,
+                          "rds"), 
+                          collapse = ".") %T>% print
+
+models.list <- models.list.name %>% readRDS
+
+training_configuration_number <- models.list[[1]] %>% .$control %>% .$number
+training_configuration_repeats <- models.list[[1]] %>% .$control %>% .$repeats
+
+
+
+```
+
+Training the model on the training set with `r training_configuration_number`-fold cross-validation, repeated  `r training_configuration_repeats` times, yields the following results. Linear regression as benchmark reference is denoted as "lm".
+
+
+```{r train the model,fig.width=7, fig.height=5, cache=TRUE, echo=FALSE}
+########################################
+########################################
+# get model metrics
+models.metrics <- models.list %>% 
+    list_modify(
+    glmnet = NULL,
+    kknn = NULL,
+    xgbTree = NULL,
+    xgbLinear = NULL,
+    svmLinear = NULL,
+    ranger = NULL) %>% 
+  get_model_metrics() 
+
+# display Rsquared trainingset performance - table
+models.metrics$metric2.training %>% kable(caption = "training set performance: Rsquared")
+
+# display Rsquared trainingset performance - boxplots
+models.metrics$metric2.resamples.boxplots
+
+# display RMSE trainingset performance - table
+models.metrics$metric1.training %>% kable(caption = "training set performance: RMSE")
+
+# display RMSE trainingset performance - boxplots
+models.metrics$metric1.resamples.boxplots
+
+# models.metrics$RMSE.training %>% filter(str_detect(model, "^lm$"))
+rank.lm.training <- which(models.metrics$metric1.training$model == "lm")
+```
+
+```{r testing set benchmark all}
+models.metrics$benchmark.all %>% kable(caption = "training vs. testing set performance: RMSE")
+```
+
+
+```{r}
+models.metrics$metric1.resamples.boxplots
+```
+

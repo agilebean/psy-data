@@ -48,6 +48,8 @@ libraries <- c("dplyr", "magrittr"
 )
 sapply(libraries, require, character.only = TRUE)
 
+source("_labels.R")
+
 if (params$impute.method != "noimpute") {
   dataset.label <- "data/dataset.rds" %>% print
 } else {
@@ -215,8 +217,8 @@ models.metrics <- models.list %>%
     ranger = NULL
   ) %>% 
   # rename to publication labels - TODO: use label
-  set_names(c("LR", "kNN", "GBM", "RF", "SVM", "target.label")) %>% 
-  get_model_metrics 
+  set_names(c(models.labels.published, "target.label")) %>% 
+  get_model_metrics(colors = color.scheme)
 
 models.list %<>% purrr::list_modify(target.label = NULL, testing.set = NULL)
 
@@ -226,15 +228,7 @@ models.list %<>% purrr::list_modify(target.label = NULL, testing.set = NULL)
 # # rank.lm.training.metric1 <- which(models.metrics$metric1.training$model == "lm")
 metric3 <- models.metrics$metric3.training %>% select(2) %>% names %>% gsub(".mean", "", .)
 rank.lm.training.metric3 <- which(models.metrics$metric3.training$model == "lm")
-# 
-# # get_metric_from_resamples
-# # models.metrics$metric1.training %>% arrange(RMSE.mean)
-# 
-# # display RMSE trainingset performance - table
-# models.metrics$metric1.training %>% kable(caption = "training set performance: RMSE")
-# 
-# # display R trainingset performance - table
-# models.metrics$metric3.training %>% kable(caption = "training set performance: R")
+
 ```
 
 In the benchmarking table above, linear regression ("lm") performs in `r metric3` on `r rank.lm.training.metric3`th rank of the selected machine learning models.
@@ -244,6 +238,7 @@ In the benchmarking table above, linear regression ("lm") performs in `r metric3
 <!-- \newpage -->
 
 ```{r trainingset metric2 , cache=FALSE}
+# display R trainingset performance - table
 models.metrics$metric3.training %>% kable(caption = "training set performance: R")
 
 rank.lm.training.metric3 <- which(models.metrics$metric3.training$model == "lm")
@@ -259,6 +254,15 @@ In the benchmarking table above, linear regression ("lm") performs in `r metric3
 models.metrics$metric3.resamples.boxplots
 
 ```
+
+```{r # display R trainingset performance - table, cache=TRUE}
+
+# display RMSE trainingset performance - table
+models.metrics$metric1.training %>% kable(caption = "training set performance: RMSE")
+
+```
+
+
 ```{r trainingset metric1 boxplots,fig.width=7, fig.height=5, cache=TRUE, echo=FALSE, fig.align='center'}
 # display RMSE trainingset performance - boxplots
 models.metrics$metric1.resamples.boxplots

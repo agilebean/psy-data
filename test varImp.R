@@ -106,10 +106,13 @@ models.list$glm %>% varImp()
 library(gbm)
 models.list$gbm %>% varImp()
 
+models.list$rf %>% varImp()
 # alternative methods to get varImp from randomForest object
 models.list$rf$finalModel %>% list_variable_importance()
 models.list$rf$finalModel %>% randomForest::varImpPlot()
 models.list$rf$finalModel %>% visualize_variable_importance_rf
+models.list$rf %>% visualize_importance(relative = FALSE)
+models.list$rf$finalModel %>% visualize_importance(relative = FALSE)
 
 ######################################################################
 # Alternative visualization - manual

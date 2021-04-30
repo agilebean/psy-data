@@ -38,17 +38,22 @@ get_data_models_list <- function(models_labels) {
   # get model in model.permutations.labels by model index
   print(paste0("Reading file >> ", models.list.label))
   models.list <- readRDS(models.list.label)
-  # models.list <- readRDS("data/models.list.PERF10.big5items.all.100repeats.noimpute.rds")
+  # models.list <- readRDS("data/models.list.PERF10.items.big5items.all.100repeats.noimpute.rds")
 
-  models.varimp <- models.list %>%
+  return(models.list)
+}
+
+
+get_models_varimp <- function(models_list) {
+
+ # models_list <- models.list
+  models_list %>%
     names %>%
     # tricky: avoid glmnet by squeezing ^lm$
     # str_detect("^ranger|rf|gbm|lm$") %>%
     str_detect("^rf|gbm|lm$") %>%
     # select specific list elements by name
-    purrr::keep(models.list, .)
-
-  return(models.varimp)
+    purrr::keep(models_list, .)
 }
 
 
@@ -96,7 +101,8 @@ data.labels <- model.permutations.labels[model.index,] %>%
   unlist() %>% as.vector() %T>% print
 
 # 2) get data
-models.varimp <- get_data_models_list(data.labels)
+models.list <- get_data_models_list(data.labels) %>% print
+models.varimp <- models.list %>% get_models_varimp()
 
 # 3) correlation matrix
 models.varimp$gbm %>%
@@ -167,6 +173,7 @@ system.time(
     map(data.labels.list,
         function(data_labels) {
           get_data_models_list(data_labels) %>%
+          get_models_varimp() %>%
             create_plots_feature_importance(
               ., data_labels,
               save = TRUE,
@@ -177,11 +184,49 @@ system.time(
     )
 )
 
+system.time(
+  ci.list <-
+    map(data.labels.list,
+        function(data_labels) {
+          get_data_models_list(data_labels) %>%
+          list_modify(target.label = NULL, testing.set = NULL) %>%
+            list_modify(
+              glmnet = NULL,
+              kknn = NULL,
+              xgbTree = NULL,
+              xgbLinear = NULL,
+              svmLinear = NULL,
+              ranger = NULL) %>%
+            map_dfr(.,
+                    ~ calculate_ci_bootstrapped(.x, 1000),
+                    .id = "model")
+        }
+    )
+)
+
+kable_table <- function(data, digits = 4,data_label) {
+  data %>%
+  knitr::kable(digits = digits, format = "html") %>%
+    cat(file = paste0("tables/ci ", data_label, ".html"))
+}
+options(digits = 4)
+ci.list$all %>% kable_table(data_label = "PERF10.items.all")
+ci.list$`R&D` %>% kable_table(data_label = "PERF10.items.R&D")
+ci.list$sales %>% kable_table(data_label = "PERF10.items.sales")
+ci.list$support %>% kable_table(data_label = "PERF10.items.support")
+
+ci.list$all %>% kable_table(data_label = "PERF10.items.all")
+ci.list$`R&D` %>% kable_table(data_label = "PERF10.items.R&D")
+ci.list$sales %>% kable_table(data_label = "PERF10.items.sales")
+ci.list$support %>% kable_table(data_label = "PERF10.items.support")
+
+
 
 #########################################
 # create feature importance tables
 varimp.list <- map(data.labels.list,
     ~get_data_models_list(.x) %>%
+      get_models_varimp() %>%
       map(., ~.x %>% visualize_importance(relative = TRUE, labels = TRUE))
       )
 
