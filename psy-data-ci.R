@@ -6,7 +6,7 @@
 ################################################################################
 
 mode <- "ci.single"
-mode <- "ci.all"
+# mode <- "ci.all"
 
 # CV.REPEATS <- 10
 CV.REPEATS <- 100
@@ -19,7 +19,7 @@ IMPUTE.METHOD <- "noimpute"
 # load libraries
 # devtools::install_github("agilebean/machinelearningtools", force = TRUE)
 # detach("package:machinelearningtools", character.only = TRUE)
-libraries <- c("dplyr", "tidyverse", "magrittr", "knitr", "machinelearningtools")
+libraries <- c("dplyr", "tidyverse", "knitr", "machinelearningtools", "infer")
 sapply(libraries, require, character.only = TRUE)
 
 source("_labels.R")
@@ -82,14 +82,13 @@ calculate_ci_bootstrapped <- function(
     calculate(stat = "mean") %>%
     dplyr::pull()
 
-  boot_distr %>%
+  bb <- boot_distr %>%
     get_confidence_interval(
       point_estimate = sample_mean,
       level = 0.95,
       type = "se"
     )
 }
-
 
 
 calculate_ci_per_models_list <- function(
@@ -140,16 +139,18 @@ system.time(
       target.label, features.set.label, job.label)
 
     # step3: calculate CIs
-    # metric <- "R"
-    metric <- "RMSE"
+    metric <- "R"
+    # metric <- "RMSE"
     ci.label <- paste0(c(
         "tables/ci.table",
         target.label, features.set.label, job.label, metric
         ), collapse = ".") %>% print
 
     best.model.CI <- calculate_ci_per_models_list(
-      model.list, metric = "R", repetitions = 10,
-      save_label = ci.label) %T>% print
+      model.list, metric = "R",
+      save_label = ci.label,
+      repetitions = 10e4
+      ) %T>% print
 
 
   } else if (mode == "ci.all") {
