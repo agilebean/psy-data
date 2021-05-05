@@ -132,63 +132,79 @@ models.varimp$gbm %>% varImp()
 ################################################################################
 # MAIN: all models
 ################################################################################
-# 1) get config: from model.permutations.list by model index
-data.labels.list <- model.permutations.labels %>%
-  group_by(row_number()) %>%
-  nest() %>%
-  mutate(
-    labels = map(data, ~ unlist(.x) %>% as.vector)
-  ) %>%
-  .$labels %>%
-  set_names(model.permutations.labels$job_label)
+# step1)
+# read models.lists from all datasets
+# NEW <- TRUE
+NEW <- FALSE
 
-model.permutations.labels
-model.permutations.string
-data.labels.list
+data.label.all <- "data/models.list.PERF10.ALL.rds"
 
+if (NEW) {
+  system.time(
+    datasets.models.list <- model.permutations.strings %>%
+      map(~ read_models_list(.x)) %>%
+      set_names(model.permutations.strings)
+  ) # 6.8s
 
+  system.time(
+    datasets.models.list %>% saveRDS(data.label.all)
+  ) # 31s
 
+} else {
+  system.time(
+    datasets.models.list <- readRDS(data.label.all)
+  ) # 5.3s
+}
+
+datasets.models.list
 
 #########################################
 # create correlation matrices
 system.time(
   correlation.list <-
-    map(model.permutations.string,
-        ~ read_models_list(.x) %>%
+    map(datasets.models.list,
+        ~ .x %>%  # tricky: start with .x
           pluck("RF") %>%
           print_correlation_table_from_model(digits = 2)
-    )
-)
+    ) %>%
+    set_names(model.permutations.strings)
+) # 0.64s
 
-correlation.list$all$rf$html.table
+correlation.list$PERF10.big5composites.all
 
 map2(correlation.list, names(correlation.list),
-       function(jobtype_result, jobtype_label) {
+       function(correlation_result, jobtype_label) {
 
-         model_object <- jobtype_result$rf
-         model_object$html.table %>%
+         correlation_result$html.table %>%
            cat(., file = paste0(
              c("tables/corrtable", features.set.labels.list,
-               jobtype_label, model_object$method, "html"),
+               jobtype_label, correlation_result$method, "html"),
              collapse = "."))
   })
 
 #########################################
 # create feature importance plots
 
-# read models.lists from all datasets
-datasets.models.list <- model.permutations.labels %>%
-  pmap(~ read_models_list(..1, ..2, ..3)) %>%
-  set_names(model.permutations.string)
-
-model.permutations.string %>%
-  map(~ read_models_list(.x)) %>%
-  set_names(model.permutations.string)
-
 # get gbm from each models.list
 GBM.list <- datasets.models.list %>%
-  map( ~ .x %>%
-         pluck("GBM"))
+  map( ~ .x %>%  # tricky: start with .x
+         pluck("GBM")
+         create_plots_feature_importance(
+           ., model.permutations.strings,
+           # save = TRUE,
+           # width = 7, height = 3, axis_limit = 103 # composites
+           width = 6, height = 6, axis_limit = 26 # items
+         )
+
+         )
+
+GBM.list$PERF10.big5composites.all %>%
+  create_plots_feature_importance(
+    ., "lalala",
+    # save = TRUE,
+    # width = 7, height = 3, axis_limit = 103 # composites
+    width = 6, height = 6, axis_limit = 26 # items
+  )
 
 system.time(
   varimp.list <-

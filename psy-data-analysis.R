@@ -225,7 +225,7 @@ if (mode == "new") {
         return(models.list)
       })
     ############ END
-  ) %T>% { push_message(.["elapsed"], model.permutations.string ) }
+  ) %T>% { push_message(.["elapsed"], model.permutations.strings ) }
 
 }
 

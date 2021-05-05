@@ -97,11 +97,11 @@ extract_best_model <- function(model_label, metric = "R") {
 # create list of best models per benchmark
 #####################################################
 system.time(
-  best.model.list <- model.permutations.string %>%
+  best.model.list <- model.permutations.strings %>%
     map(~ create_model_label(.x) %>%
           extract_best_model("R")
     ) %>%
-    set_names(model.permutations.string)
+    set_names(model.permutations.strings)
 ) # 17.3s
 
 best.model.list %>% names
@@ -149,7 +149,7 @@ get_best_R <- function(model, digits = 4) {
 }
 
 
-model.permutations.string
+model.permutations.strings
 
 model.label <- "PERF10.big5composites.all"
 # model.label <- "PERF10.big5composites.R&D" # lm not tunable

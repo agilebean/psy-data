@@ -23,36 +23,10 @@ libraries <- c("dplyr", "tidyverse", "knitr", "machinelearningtools", "infer")
 sapply(libraries, require, character.only = TRUE)
 
 source("_labels.R")
+source("_common.R")
+
 
 PREFIX <- "results/psy-data-analysis"
-
-
-read_model_list <- function(
-  target_label, features_set_label, job_label) {
-
-  output.filename <- output_filename(
-    "data/models.list",
-    target_label, features_set_label, job_label,
-    paste0(CV.REPEATS, "repeats"), impute_method = IMPUTE.METHOD,
-    suffix = "rds"
-  ) %>% print
-
-  models.list.all <- output.filename %>% readRDS()
-
-  models.list.select <- models.list.all %>%
-    list_modify(
-      glmnet = NULL,
-      kknn = NULL,
-      xgbTree = NULL,
-      xgbLinear = NULL,
-      svmLinear = NULL,
-      ranger = NULL) %>%
-    list_modify(target.label = NULL, testing.set = NULL) %>%
-    set_names(models.labels.published)
-
-  return(models.list.select)
-
-}
 
 
 calculate_ci_bootstrapped <- function(
@@ -135,8 +109,8 @@ system.time(
     job.label <- c("all")
 
     # step2: read model list
-    model.list <- read_model_list(
-      target.label, features.set.label, job.label)
+    model.list <- read_models_list(
+      c(target.label, features.set.label, job.label))
 
     # step3: calculate CIs
     metric <- "R"
@@ -164,7 +138,7 @@ system.time(
       ci.results <- model.permutations.labels %>%
         pmap(
           # step2: read model list
-          ~ read_model_list(..1, ..2, ..3) %>%
+          ~ read_models_list(..1, ..2, ..3) %>%
             # step3: calculate CIs
             calculate_ci_per_models_list(
               .,

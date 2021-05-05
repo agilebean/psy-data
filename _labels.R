@@ -13,7 +13,7 @@ model.permutations.labels <- crossing(
   job_label = job.labels.list
 )
 
-model.permutations.string <- model.permutations.labels %>%
+model.permutations.strings <- model.permutations.labels %>%
   pmap_chr(function(target_label, features_set_label, job_label) {
     paste(target_label, features_set_label, job_label, sep = ".")
   })
