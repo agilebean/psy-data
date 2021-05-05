@@ -155,17 +155,7 @@ system.time(
 
   } else if (mode == "ci.all") {
 
-    # step1: create labels
-    target.label.list <- c("PERF10")
-    features.set.labels.list <- c("big5items", "big5composites")
-    job.labels.list <- c("sales", "R&D", "support", "all")
-
-    model.permutations.labels <- crossing(
-      target_label = target.label.list,
-      features_set_label = features.set.labels.list,
-      job_label = job.labels.list
-    ) %T>% print
-
+    # step1: define metric
     metric <- "R"
     # metric <- "RMSE"
 
