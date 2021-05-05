@@ -19,32 +19,14 @@ libraries <- c(
 sapply(libraries, require, character.only = TRUE)
 
 source("_labels.R")
+source("_common.R")
 
 getOption("digits")
-
-model.permutations.labels
 
 
 ################################################################################
 # get data of models.list
 ################################################################################
-get_data_models_list <- function(models_labels) {
-
-  # get models label
-  models.list.label <- output_filename(
-    PREFIX, models_labels,
-    paste0(CV.REPEATS, "repeats"), impute_method = IMPUTE.METHOD
-  )
-
-  # get model in model.permutations.labels by model index
-  print(paste0("Reading file >> ", models.list.label))
-  models.list <- readRDS(models.list.label)
-  # models.list <- readRDS("data/models.list.PERF10.items.big5items.all.100repeats.noimpute.rds")
-
-  return(models.list)
-}
-
-
 get_models_varimp <- function(models_list) {
 
  # models_list <- models.list
@@ -102,7 +84,7 @@ data.labels <- model.permutations.labels[model.index,] %>%
   unlist() %>% as.vector() %T>% print
 
 # 2) get data
-models.list <- get_data_models_list(data.labels) %>% print
+models.list <- read_models_list(data.labels) %>% print
 models.varimp <- models.list %>% get_models_varimp()
 models.varimp$gbm %>% varImp()
 models.varimp$rf %>% varImp()
@@ -160,18 +142,22 @@ data.labels.list <- model.permutations.labels %>%
   .$labels %>%
   set_names(model.permutations.labels$job_label)
 
+model.permutations.labels
+model.permutations.string
+data.labels.list
+
+
+
+
 #########################################
 # create correlation matrices
 system.time(
   correlation.list <-
-    map(data.labels.list,
-        function(data_labels) {
-          get_data_models_list(data_labels) %>%
-            purrr::keep(names(.) %in% c("rf")) %>%
-            map(.,
-              ~ print_correlation_table_from_model(.x, digits = 2)
-            )
-        })
+    map(model.permutations.string,
+        ~ read_models_list(.x) %>%
+          pluck("RF") %>%
+          print_correlation_table_from_model(digits = 2)
+    )
 )
 
 correlation.list$all$rf$html.table
@@ -189,11 +175,37 @@ map2(correlation.list, names(correlation.list),
 
 #########################################
 # create feature importance plots
+
+# read models.lists from all datasets
+datasets.models.list <- model.permutations.labels %>%
+  pmap(~ read_models_list(..1, ..2, ..3)) %>%
+  set_names(model.permutations.string)
+
+model.permutations.string %>%
+  map(~ read_models_list(.x)) %>%
+  set_names(model.permutations.string)
+
+# get gbm from each models.list
+GBM.list <- datasets.models.list %>%
+  map( ~ .x %>%
+         pluck("GBM"))
+
+system.time(
+  varimp.list <-
+    map(datasets.models.list,
+        ~ .x %>%
+          pluck("GBM") %T>% print
+    )
+)
+
+models.list <- datasets.models.list$PERF10.big5composites.all
+varimp.list$PERF10.big5composites.all
+
 system.time(
   result.list <-
     map(data.labels.list,
         function(data_labels) {
-          get_data_models_list(data_labels) %>%
+          read_models_list(data_labels) %>%
           get_models_varimp() %>%
             create_plots_feature_importance(
               ., data_labels,
@@ -209,7 +221,7 @@ system.time(
   ci.list <-
     map(data.labels.list,
         function(data_labels) {
-          get_data_models_list(data_labels) %>%
+          read_models_list(data_labels) %>%
           list_modify(target.label = NULL, testing.set = NULL) %>%
             list_modify(
               glmnet = NULL,
@@ -246,7 +258,7 @@ ci.list$support %>% kable_table(data_label = "PERF10.items.support")
 #########################################
 # create feature importance tables
 varimp.list <- map(data.labels.list,
-    ~get_data_models_list(.x) %>%
+    ~read_models_list(.x) %>%
       get_models_varimp() %>%
       map(., ~.x %>% visualize_importance(relative = TRUE, labels = TRUE))
       )
