@@ -14,6 +14,7 @@ libraries <- c(
   , "machinelearningtools"
   , "knitr"
   , "tidyverse"
+  , "gbm"
 )
 sapply(libraries, require, character.only = TRUE)
 
@@ -96,13 +97,30 @@ create_plots_feature_importance <- function(
 # MAIN: single model
 ################################################################################
 # 1) get config: from model.permutations.list by model index
-model.index = 1
+model.index = 5
 data.labels <- model.permutations.labels[model.index,] %>%
   unlist() %>% as.vector() %T>% print
 
 # 2) get data
 models.list <- get_data_models_list(data.labels) %>% print
 models.varimp <- models.list %>% get_models_varimp()
+models.varimp$gbm %>% varImp()
+models.varimp$rf %>% varImp()
+
+# # doesn't work!
+# models.varimp$svmRadial %>% varImp()
+# models.varimp$svmRadial %>% varImp(useModel = FALSE, nonpara = FALSE)
+# models.varimp$svmRadial %>% varImp(useModel = FALSE)
+# models.varimp$svmRadial %>% varImp(nonpara = FALSE)
+# models.varimp$svmRadial %>% varImp(scale = FALSE)
+#
+# models.varimp$svmRadial$finalModel %>% varImp()
+# models.varimp$svmRadial$finalModel %>% class
+# methods(varImp)
+#
+# rminer::Importance(M = models.varimp$svmRadial$finalModel,
+#                    data = models.varimp$svmRadial$trainingData,
+#                    method = "sens")
 
 # 3) correlation matrix
 models.varimp$gbm %>%
@@ -116,10 +134,13 @@ system.time(
     axis_limit = 25.5)
 )
 
-
-
+models.varimp$lm %>% .$finalModel %>% summary()
+varimp.list$lm
 varimp.list$gbm
+varimp.list$rf
+
 models.varimp$gbm %>% varImp()
+
 # problem:
 # for varImp(), ranger needs explicit importance = "impurity" argument
 # -> implemented this in benchmark_algorithms on July 12, 2020:
