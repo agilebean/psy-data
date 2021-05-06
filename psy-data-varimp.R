@@ -29,50 +29,14 @@ getOption("digits")
 ################################################################################
 get_models_varimp <- function(models_list) {
 
- # models_list <- models.list
   models_list %>%
     names %>%
     # tricky: avoid glmnet by squeezing ^lm$
     # str_detect("^ranger|rf|gbm|lm$") %>%
-    str_detect("^rf|gbm|lm$") %>%
+    # str_detect("^rf|gbm|lm$") %>%
+    str_detect("^RF|GBM|LR$") %>%
     # select specific list elements by name
     purrr::keep(models_list, .)
-}
-
-
-################################################################################
-# visualize feature importance
-################################################################################
-create_plots_feature_importance <- function(
-  models_list, data_labels, save = FALSE,
-  width = 10, height = 10, axis_limit = NULL) {
-
-  map2(
-    models_list, names(models_list),
-    function(model, model_label) {
-
-      filename <- paste0(c("figures/importance",
-                           data_labels, model_label, "png"),
-                        collapse = ".") %>% print
-      model %>%
-        visualize_importance(relative = TRUE, labels = TRUE,
-                             axis_limit = axis_limit) %T>%
-        { print(.$importance.table) } %>%
-        .$importance.plot %>%
-        {
-          if (save) {
-            ggsave(
-              filename = filename,
-              plot = .,
-              dpi = 450,
-              width = width,
-              height = height
-            )
-          } else {
-            .
-          }
-        }
-    })
 }
 
 ################################################################################
@@ -86,8 +50,9 @@ data.labels <- model.permutations.labels[model.index,] %>%
 # 2) get data
 models.list <- read_models_list(data.labels) %>% print
 models.varimp <- models.list %>% get_models_varimp()
-models.varimp$gbm %>% varImp()
-models.varimp$rf %>% varImp()
+library(gbm)
+models.varimp$GBM %>% varImp()
+models.varimp$RF %>% varImp()
 
 # # doesn't work!
 # models.varimp$svmRadial %>% varImp()
@@ -105,25 +70,22 @@ models.varimp$rf %>% varImp()
 #                    method = "sens")
 
 # 3) correlation matrix
-models.varimp$gbm %>%
+models.varimp$GBM %>%
   print_correlation_table_from_model(digits = 2)
 
 # 4) visualize feature importance
 system.time(
-  varimp.list <- create_plots_feature_importance(
-    models.varimp, data.labels,
+  plot.fi <- create_feature_importance_plot(
+    models.varimp$GBM, "gbm", data_labels = data.labels,
     # save = TRUE,
     axis_limit = 25.5)
 )
+plot.fi
 
-models.varimp$lm %>% .$finalModel %>% summary()
-varimp.list$lm
-varimp.list$gbm
-varimp.list$rf
+models.varimp$LR %>% .$finalModel %>% summary()
+models.varimp$GBM %>% varImp()
 
-models.varimp$gbm %>% varImp()
-
-# problem:
+# problem ranger:
 # for varImp(), ranger needs explicit importance = "impurity" argument
 # -> implemented this in benchmark_algorithms on July 12, 2020:
 # https://github.com/agilebean/machinelearningtools/commit/427e0d5
@@ -134,6 +96,7 @@ models.varimp$gbm %>% varImp()
 ################################################################################
 # step1)
 # read models.lists from all datasets
+
 # NEW <- TRUE
 NEW <- FALSE
 
@@ -158,20 +121,22 @@ if (NEW) {
 
 datasets.models.list
 
-#########################################
+#####################################################
 # create correlation matrices
-system.time(
-  correlation.list <-
-    map(datasets.models.list,
-        ~ .x %>%  # tricky: start with .x
-          pluck("RF") %>%
-          print_correlation_table_from_model(digits = 2)
-    ) %>%
-    set_names(model.permutations.strings)
-) # 0.64s
+#####################################################
+# step1: create correlation tables (html + data)
+correlation.list <-
+  map(datasets.models.list,
+      ~ .x %>%  # tricky: start with .x
+        pluck("RF") %>%
+        print_correlation_table_from_model(digits = 2)
+  ) %>%
+  set_names(model.permutations.strings)
+# 0.68s
 
 correlation.list$PERF10.big5composites.all
 
+# step2: save correlation html tables
 map2(correlation.list, names(correlation.list),
        function(correlation_result, jobtype_label) {
 
@@ -182,117 +147,126 @@ map2(correlation.list, names(correlation.list),
              collapse = "."))
   })
 
-#########################################
-# create feature importance plots
+#####################################################
+# create feature importance tables & plots
+#####################################################
+# step1: extract varImp-able models from each models.list
+models.varimp.list <- datasets.models.list %>%
+  # tricky: start with .x
+  map( ~ .x %>% get_models_varimp() )
 
-# get gbm from each models.list
-GBM.list <- datasets.models.list %>%
-  map( ~ .x %>%  # tricky: start with .x
-         pluck("GBM")
-         create_plots_feature_importance(
-           ., model.permutations.strings,
-           # save = TRUE,
-           # width = 7, height = 3, axis_limit = 103 # composites
-           width = 6, height = 6, axis_limit = 26 # items
-         )
+# select model label
+model.label.publish <- "GBM"
 
-         )
+# # try single model
+# models.varimp.list$PERF10.big5composites.all %>%
+#   pluck(model.label.publish) %>%
+#   visualize_importance(relative = TRUE, labels = TRUE)
 
-GBM.list$PERF10.big5composites.all %>%
-  create_plots_feature_importance(
-    ., "lalala",
-    # save = TRUE,
-    # width = 7, height = 3, axis_limit = 103 # composites
-    width = 6, height = 6, axis_limit = 26 # items
-  )
+# step2: create varimp plots+tables for each models.list
+varimp.list <- models.varimp.list %>%
+  map(~ .x %>% # .x = models.list
+        map( ~ visualize_importance(
+          .x, relative = TRUE, labels = TRUE
+        )))
 
-system.time(
-  varimp.list <-
-    map(datasets.models.list,
-        ~ .x %>%
-          pluck("GBM") %T>% print
-    )
-)
-
-models.list <- datasets.models.list$PERF10.big5composites.all
-varimp.list$PERF10.big5composites.all
-
-system.time(
-  result.list <-
-    map(data.labels.list,
-        function(data_labels) {
-          read_models_list(data_labels) %>%
-          get_models_varimp() %>%
-            create_plots_feature_importance(
-              ., data_labels,
-              save = TRUE,
-              # width = 7, height = 3, axis_limit = 103 # composites
-              width = 6, height = 6, axis_limit = 26 # items
-              )
-        }
-    )
-)
-
-system.time(
-  ci.list <-
-    map(data.labels.list,
-        function(data_labels) {
-          read_models_list(data_labels) %>%
-          list_modify(target.label = NULL, testing.set = NULL) %>%
-            list_modify(
-              glmnet = NULL,
-              kknn = NULL,
-              xgbTree = NULL,
-              xgbLinear = NULL,
-              svmLinear = NULL,
-              ranger = NULL) %>%
-            map_dfr(.,
-                    ~ calculate_ci_bootstrapped(.x, 1000),
-                    .id = "model")
-        }
-    )
-)
-
-kable_table <- function(data, digits = 4,data_label) {
-  data %>%
-  knitr::kable(digits = digits, format = "html") %>%
-    cat(file = paste0("tables/ci ", data_label, ".html"))
-}
-options(digits = 4)
-ci.list$all %>% kable_table(data_label = "PERF10.items.all")
-ci.list$`R&D` %>% kable_table(data_label = "PERF10.items.R&D")
-ci.list$sales %>% kable_table(data_label = "PERF10.items.sales")
-ci.list$support %>% kable_table(data_label = "PERF10.items.support")
-
-ci.list$all %>% kable_table(data_label = "PERF10.items.all")
-ci.list$`R&D` %>% kable_table(data_label = "PERF10.items.R&D")
-ci.list$sales %>% kable_table(data_label = "PERF10.items.sales")
-ci.list$support %>% kable_table(data_label = "PERF10.items.support")
-
-
-
-#########################################
-# create feature importance tables
-varimp.list <- map(data.labels.list,
-    ~read_models_list(.x) %>%
-      get_models_varimp() %>%
-      map(., ~.x %>% visualize_importance(relative = TRUE, labels = TRUE))
-      )
+# get varImp plots - only for model.label.publish
+varimp.list %>% map(
+  ~ .x %>%
+    pluck(model.label.publish) %>%
+    pluck("importance.plot") )
 
 # for BigFive Factors (oo, cc, ee, aa, nn)
 # options(digits = 3)
-varimp.list$`R&D`$lm$importance.table
-varimp.list$sales$gbm$importance.table
-varimp.list$support$gbm$importance.table
-varimp.list$all$gbm$importance.table
+varimp.list$PERF10.big5composites.all$GBM
+varimp.list$`PERF10.big5composites.R&D`$GBM
+varimp.list$PERF10.big5composites.sales$GBM
+varimp.list$PERF10.big5composites.support$GBM
 
 # for BigFive Facets (oo1~5, cc1~5, ee1~5, aa1~5, nn1~5)
 # options(digits = 2)
-varimp.list$`R&D`$rf$importance.table
-varimp.list$sales$rf$importance.table
-varimp.list$support$rf$importance.table
-varimp.list$all$rf$importance.table
+varimp.list$PERF10.big5items.all$GBM
+varimp.list$`PERF10.big5items.R&D`$GBM
+varimp.list$PERF10.big5items.sales$GBM
+varimp.list$PERF10.big5items.support$GBM
 
-varimp.list %>% map(~ .x %>% .$importance.table)
+# step3: save varImp plots
+# # this works - but does not consider axis_limits
+# map2(
+#   varimp.list, names(varimp.list),
+#   ~ .x %>%
+#     pluck(model.label.publish) %>%
+#     pluck("importance.plot") %>%
+#     ggsave(
+#       filename =  paste0(c("figures/importance",
+#                            .y, model.label.publish, "png"),
+#                          collapse = "."),
+#       plot = .,
+#       dpi = 300,
+#       width = 7, height = 3
+#     )
+# )
+
+# save varImp plots with different axis_limits for composites/items
+plot_varImp_list_of_lists <- function(dataset_type) {
+
+  if (dataset_type == "items") {
+
+    list.of.lists <-
+      get_listelements_by_string(models.varimp.list, "items")
+    width = 6
+    height = 6
+    axis_limit = 48 # items
+
+  } else if (dataset_type == "composites") {
+
+    list.of.lists <-
+      get_listelements_by_string(models.varimp.list, "composites")
+    width = 7
+    height = 3
+    axis_limit = 103 # composites
+  }
+
+  map2(list.of.lists, names(list.of.lists),
+
+       function(models_list, models_list_label) {
+
+         map2(models_list, names(models_list),
+
+              function(model_object, model_label) {
+
+                filename <- paste0(
+                  c("figures/importance",
+                    models_list_label, model_label, "png"),
+                  collapse = ".") %>% print
+
+                visualize_importance(
+                  model_object,
+                  relative = TRUE,
+                  labels = TRUE,
+                  save_label = filename,
+                  width = width,
+                  height = height,
+                  axis_limit = axis_limit
+                )
+              }
+         )
+       }
+  )
+
+}
+
+
+get_listelements_by_string(models.varimp.list, "composites")
+get_listelements_by_string(models.varimp.list, "items")
+
+plot_varImp_list_of_lists("composites")
+plot_varImp_list_of_lists("items")
+
+
+
+
+
+
 
 
