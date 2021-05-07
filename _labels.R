@@ -6,7 +6,6 @@ features.set.labels.list <- c("big5items", "big5composites")
 # features.set.labels.list <- c("big5items")
 job.labels.list <- c("sales", "R&D", "support", "all")
 
-
 model.permutations.labels <- crossing(
   target_label = target.label.list,
   features_set_label = features.set.labels.list,
@@ -17,6 +16,8 @@ model.permutations.strings <- model.permutations.labels %>%
   pmap_chr(function(target_label, features_set_label, job_label) {
     paste(target_label, features_set_label, job_label, sep = ".")
   })
+
+data.labels.long <- readRDS("data/data.labels.rds")
 
 # nominal <- FALSE # with ordinal as ORDERED factors
 nominal <- TRUE # with ordinal as NOMINAL factor

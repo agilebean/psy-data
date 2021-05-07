@@ -65,7 +65,7 @@ calculate_ci_bootstrapped <- function(
 }
 
 
-calculate_ci_per_models_list <- function(
+calculate_ci_bootstrapped_per_models_list <- function(
   models_list, metric, repetitions, digits = 3, save_label = "", ...) {
 
   ci.results <- map_dfr(
@@ -120,8 +120,9 @@ system.time(
         target.label, features.set.label, job.label, metric
         ), collapse = ".") %>% print
 
-    best.model.CI <- calculate_ci_per_models_list(
-      model.list, metric = "R",
+    best.model.CI <- calculate_ci_bootstrapped_per_models_list(
+      model.list,
+      metric = "R",
       save_label = ci.label,
       repetitions = 10e4
       ) %T>% print
@@ -135,18 +136,18 @@ system.time(
 
     set.seed(171)
     system.time(
-      ci.results <- model.permutations.labels %>%
+      ci.results <- model.permutations.strings %>%
         pmap(
           # step2: read model list
-          ~ read_models_list(..1, ..2, ..3) %>%
+          ~ read_models_list(.x) %>%
             # step3: calculate CIs
-            calculate_ci_per_models_list(
+            calculate_ci_bootstrapped_per_models_list(
               .,
               metric = metric,
               repetitions = 10e4,
-              save_label = paste0(
-                list("tables/ci.table", ..1, ..2, ..3, metric),
-                collapse = ".")
+              # save_label = paste0(
+              #   list("tables/ci.table", ..1, ..2, ..3, metric),
+              #   collapse = ".")
             )
         )
     ) # R: 11s/10rep, 22.3s/1000rep, 484s/10e4rep

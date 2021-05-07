@@ -5,8 +5,8 @@
 #
 ################################################################################
 # load libraries
-# detach("package:machinelearningtools", character.only = TRUE)
-# devtools::install_github("agilebean/machinelearningtools", force = TRUE)
+detach("package:machinelearningtools", character.only = TRUE)
+devtools::install_github("agilebean/machinelearningtools", force = TRUE)
 libraries <- c(
   "magrittr"
   , "caret"
@@ -75,10 +75,11 @@ models.varimp$GBM %>%
 
 # 4) visualize feature importance
 system.time(
-  plot.fi <- create_feature_importance_plot(
-    models.varimp$GBM, "gbm", data_labels = data.labels,
+  plot.fi <- visualize_importance(
+    models.varimp$GBM, relative = TRUE, labels = TRUE,
     # save = TRUE,
-    axis_limit = 25.5)
+    axis_limit = 25.5
+  )
 )
 plot.fi
 
@@ -128,7 +129,7 @@ datasets.models.list
 correlation.list <-
   map(datasets.models.list,
       ~ .x %>%  # tricky: start with .x
-        pluck("RF") %>%
+        pluck("LR") %>%
         print_correlation_table_from_model(digits = 2)
   ) %>%
   set_names(model.permutations.strings)
@@ -217,6 +218,7 @@ plot_varImp_list_of_lists <- function(dataset_type) {
     width = 6
     height = 6
     axis_limit = 48 # items
+    axis_label = "facet"
 
   } else if (dataset_type == "composites") {
 
@@ -225,6 +227,7 @@ plot_varImp_list_of_lists <- function(dataset_type) {
     width = 7
     height = 3
     axis_limit = 103 # composites
+    axis_label = "factor"
   }
 
   map2(list.of.lists, names(list.of.lists),
@@ -243,7 +246,9 @@ plot_varImp_list_of_lists <- function(dataset_type) {
                 visualize_importance(
                   model_object,
                   relative = TRUE,
-                  labels = TRUE,
+                  text_labels = TRUE,
+                  axis_label = axis_label,
+                  axis_tick_labels = data.labels.long,
                   save_label = filename,
                   width = width,
                   height = height,
@@ -253,9 +258,13 @@ plot_varImp_list_of_lists <- function(dataset_type) {
          )
        }
   )
-
 }
 
+
+# change axis labels for factors/facets
+data.labels.long
+varimp.list$PERF10.big5items.all$GBM$importance.plot +
+  scale_x_discrete(labels = data.labels.long)
 
 get_listelements_by_string(models.varimp.list, "composites")
 get_listelements_by_string(models.varimp.list, "items")
