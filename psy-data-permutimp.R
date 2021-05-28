@@ -15,6 +15,8 @@ libraries <- c(
   , "knitr"
   , "tidyverse"
   , "gbm"
+  , "DALEX"
+  , "furrr"
 )
 sapply(libraries, require, character.only = TRUE)
 
@@ -32,73 +34,10 @@ get_models_varimp <- function(models_list) {
   models_list %>%
     names %>%
     # tricky: avoid glmnet by squeezing ^lm$
-    # str_detect("^ranger|rf|gbm|lm$") %>%
-    # str_detect("^rf|gbm|lm$") %>%
     str_detect("^RF|GBM|LR$") %>%
     # select specific list elements by name
     purrr::keep(models_list, .)
 }
-
-################################################################################
-# MAIN: single model
-################################################################################
-# 1) get config: from model.permutations.list by model index
-model.index = 5
-data.labels <- model.permutations.labels[model.index,] %>%
-  unlist() %>% as.vector() %T>% print
-
-# 2) get data
-models.list <- read_models_list(data.labels) %>% print
-models.varimp <- models.list %>% get_models_varimp()
-library(gbm)
-models.varimp$GBM %>% varImp()
-models.varimp$RF %>% varImp()
-
-# # doesn't work!
-# models.varimp$svmRadial %>% varImp()
-# models.varimp$svmRadial %>% varImp(useModel = FALSE, nonpara = FALSE)
-# models.varimp$svmRadial %>% varImp(useModel = FALSE)
-# models.varimp$svmRadial %>% varImp(nonpara = FALSE)
-# models.varimp$svmRadial %>% varImp(scale = FALSE)
-#
-# models.varimp$svmRadial$finalModel %>% varImp()
-# models.varimp$svmRadial$finalModel %>% class
-# methods(varImp)
-#
-# rminer::Importance(M = models.varimp$svmRadial$finalModel,
-#                    data = models.varimp$svmRadial$trainingData,
-#                    method = "sens")
-
-# 3) correlation matrix
-models.varimp$GBM %>%
-  print_correlation_table_from_model(digits = 2)
-
-# 4) visualize feature importance
-system.time(
-  plot.fi <- visualize_importance(
-    models.varimp$GBM, relative = TRUE, text_labels = TRUE,
-    # save = TRUE,
-    axis_limit = 25.5
-  )
-)
-plot.fi
-
-plot1 <- visualize_importance(
-  models.varimp$GBM,
-  # text_labels = TRUE,
-  relative = TRUE,
-)
-
-
-
-models.varimp$LR %>% .$finalModel %>% summary()
-models.varimp$GBM %>% varImp()
-
-# problem ranger:
-# for varImp(), ranger needs explicit importance = "impurity" argument
-# -> implemented this in benchmark_algorithms on July 12, 2020:
-# https://github.com/agilebean/machinelearningtools/commit/427e0d5
-
 
 ################################################################################
 # MAIN: all models
@@ -108,8 +47,6 @@ models.varimp$GBM %>% varImp()
 
 # NEW <- TRUE
 NEW <- FALSE
-
-data.label.all <- "data/models.list.PERF10.ALL.rds"
 
 if (NEW) {
   system.time(
@@ -125,36 +62,115 @@ if (NEW) {
 } else {
   system.time(
     datasets.models.list <- readRDS(data.label.all)
-  ) # 5.3s
+  ) # 6.5s
 }
 
-datasets.models.list
+datasets.models.list %>% names
+models.list <- datasets.models.list %>% pluck(1) # composites
+models.list <- datasets.models.list %>% pluck(5) # items
 
-#####################################################
-# create correlation matrices
-#####################################################
-# step1: create correlation tables (html + data)
-correlation.list <-
-  map(datasets.models.list,
-      ~ .x %>%  # tricky: start with .x
-        pluck("LR") %>%
-        print_correlation_table_from_model(digits = 2)
-  ) %>%
-  set_names(model.permutations.strings)
-# 0.68s
+getOption("parallelly.fork.enable")
+options(parallelly.fork.enable = TRUE)
+plan(multicore)
 
-correlation.list$PERF10.big5composites.all
+imap(models.list,
+     ~ paste(.y, .x$method))
 
-# step2: save correlation html tables
-map2(correlation.list, names(correlation.list),
-       function(correlation_result, jobtype_label) {
+get_permutation_fi_for_models_list <- function(models_list) {
 
-         correlation_result$html.table %>%
-           cat(., file = paste0(
-             c("tables/corrtable", features.set.labels.list,
-               jobtype_label, correlation_result$method, "html"),
-             collapse = "."))
-  })
+  fi.list.DALEX <- models_list %>%
+
+    imap(function(model_object, model_name) {
+
+      print(paste("*********", model_object$method))
+
+      training.set <- model_object$trainingData %>%
+        select(.outcome, everything())
+
+      target <- training.set$.outcome
+      print(paste("***target"))
+
+      features <- training.set %>% select(-.outcome)
+
+      DALEX.explainer <- DALEX::explain(
+        model = model_object,
+        data = features,
+        y = target,
+        label = model_name, # .y in imap() is list element name
+        colorize = TRUE
+      )
+      print("*** DALEX.explainer")
+
+      set.seed(SEED)
+      system.time(
+        DALEX.permutation.fi <- model_parts(
+          explainer = DALEX.explainer,
+          loss_function = loss_root_mean_square,
+          B = 50,
+          type = "ratio"
+        )
+      ) # 78-84s for rf
+
+      print("*** DALEX.permutation.fi")
+
+      # bar_width = 5.9 items / 12.4 composites
+      ( bar.width <- 20 / log(ncol(features)) )
+
+      DALEX.permutation.fi.plot <- DALEX.permutation.fi %>%
+        plot(
+          bar_width = bar.width
+          , title = "Permutation Feature importance"
+          , subtitle = ""
+        ) +
+        scale_y_discrete(expand = c(0, 0)) # reduce space to axis
+      DALEX.permutation.fi.plot
+      print("*** DALEX.permutation.fi.plot")
+
+      return(
+        list(
+          DALEX.explainer = DALEX.explainer
+          , DALEX.permutation.fi = DALEX.permutation.fi
+          , DALEX.permutation.fi.plot = DALEX.permutation.fi.plot
+        )
+      )
+    })
+  # 44s B=10, 220s B=50, 408s B=100
+
+  return(fi.list.DALEX)
+}
+
+datasets.models.list %>% names
+
+if (NEW) {
+  system.time(
+    datasets.permutation.fi.lists <- datasets.models.list %>%
+      map(~ get_permutation_fi_for_models_list(.x))
+  ) # 474s = 7.9min
+
+  system.time(
+    datasets.permutation.fi.lists %>%
+      saveRDS(permutation.fi.lists.label)
+  ) # 71s
+
+} else {
+
+  system.time(
+    datasets.permutation.fi.lists <-
+      readRDS(permutation.fi.lists.label)
+  ) # 13.5s
+
+}
+
+datasets.permutation.fi.lists
+
+fi.list <- datasets.permutation.fi.lists$PERF10.big5composites.all
+fi.list <- datasets.permutation.fi.lists$PERF10.big5items.all
+
+fi.list$LR$DALEX.permutation.fi.plot
+fi.list$kNN$DALEX.permutation.fi.plot
+fi.list$GBM$DALEX.permutation.fi.plot
+fi.list$RF$DALEX.permutation.fi.plot
+fi.list$SVM$DALEX.permutation.fi.plot
 
 #####################################################
 # create feature importance tables & plots

@@ -19,10 +19,14 @@ model.permutations.strings <- model.permutations.labels %>%
 
 data.labels.long <- readRDS("data/data.labels.rds")
 
+data.label.all <- "data/models.list.PERF10.ALL.rds"
+
+permutation.fi.lists.label <- "data/datasets.permutation.fi.lists.rds"
+
 # nominal <- FALSE # with ordinal as ORDERED factors
 nominal <- TRUE # with ordinal as NOMINAL factor
 
-seed <- 171
+SEED <- 171
 
 # cross-validation repetitions
 # CV.REPEATS <- 2

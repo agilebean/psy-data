@@ -52,9 +52,7 @@ IMPUTE.METHOD <- "noimpute"
 # IMPUTE.METHOD <- "knnImpute"
 # IMPUTE.METHOD <- "bagImpute"
 
-# prefix
-PREFIX <- "data/models.list"
-# PREFIX <- "data/testruns/models.list"
+
 
 #######################################################################
 # define features
@@ -88,7 +86,7 @@ get_features <- function(data, target_label, features_set_label) {
 ########################################
 algorithm.list <- c(
   "lm"
-  # ,"glmnet"
+  ,"glmnet"
   # , "knn"
   # , "kknn"
   # , "gbm"
@@ -134,7 +132,7 @@ if (mode == "new") {
 
     system.time(
       # tricky tricky: predict throws ERROR (variable is of class NULL)
-      # if factors contain NA > remove_unused_variables
+      # if factors contain NA >> remove_unused_variables
       dataset.imputed <- data.new %>%
         preProcess(method = IMPUTE.METHOD) %>%
         predict(newdata = data.new)
