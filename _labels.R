@@ -22,6 +22,7 @@ data.labels.long <- readRDS("data/data.labels.rds")
 data.label.all <- "data/models.list.PERF10.ALL.rds"
 
 permutation.fi.lists.label <- "data/datasets.permutation.fi.lists.rds"
+permutation.fi.lists.boxplots.label <- "data/datasets.permutation.fi.lists.boxplots.rds"
 
 # nominal <- FALSE # with ordinal as ORDERED factors
 nominal <- TRUE # with ordinal as NOMINAL factor

@@ -115,10 +115,9 @@ get_pimp_range_List_models_list <- function(
         .
       }
     } %>%
-    # if model_string, then a subset of models_list is used!
-    # VERY TRICKY: temporary assignment works only for . not names(.)
-    # TRICKY: get names() of models.selected later
     {
+      # TRICKY: temporary assignment works only for . not names(.) bec it
+      # is piped through, so call models.selected %>% names later
       {
         . -> models.selected
       } %>%
@@ -182,7 +181,7 @@ if (NEW) {
   system.time(
     datasets.permutation.fi.lists <- datasets.models.list %>%
       map(~ get_pimp_for_models_list(.x, no_permutations = 50))
-  ) # 60s (B = 5) vs 474s (B = 50)
+  ) # 60s (B = 5) vs 499s (B = 50)
 
   system.time(
     datasets.permutation.fi.lists %>%
