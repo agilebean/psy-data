@@ -1,13 +1,10 @@
-################################################################################
+z################################################################################
 # Class:      Psychology Collaboration
 # Topic:      Tenure and Job Performance
 #
 # Sources:    SPSS File: "Personality-Performance-Turnover-Chaehan So.sav"
 #
 ################################################################################
-# mode <- "new"
-mode <- "old"
-
 # Important:
 # BEFORE script, sync the google drive folder, otherwise data will not be found!
 
@@ -18,7 +15,8 @@ mode <- "old"
 libraries <- c(
   "magrittr"
   , "sjlabelled" # read SPSS
-  , "caret", "doParallel"
+  , "caret"
+  , "doParallel"
   , "RColorBrewer"
   , "machinelearningtools"
   , "knitr"
@@ -28,6 +26,9 @@ libraries <- c(
 sapply(libraries, require, character.only = TRUE)
 
 source("_labels.R")
+
+# mode <- "new"
+mode <- "old"
 
 # nominal <- FALSE # with ordinal as ORDERED factors
 nominal <- TRUE # with ordinal as NOMINAL factor
@@ -54,6 +55,15 @@ IMPUTE.METHOD <- "noimpute"
 
 
 
+#######################################################################
+#
+# library(rsample)
+# rsamples <- vfold_cv(mtcars, v = 10)
+# rsamples$splits
+# rsamples$id
+#
+# vfold_cv(mtcars, v = 10, repeats = 2)
+#
 #######################################################################
 # define features
 #######################################################################
@@ -114,7 +124,7 @@ if (mode == "new") {
     method = "repeatedcv", number = 10
     , repeats = CV.REPEATS
     , savePredictions = "final"
-    )
+  )
 
   ###################################################
   # 1. Data Acquistion - includes 2.2 Data Cleaning
