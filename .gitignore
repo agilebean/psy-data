@@ -1,21 +1,11 @@
 data/*
 figures/*
+results/*
+test/*
 new/*
-manuscript/*
 *.pdf
-.DS_Store
 *.Rproj
-.Rproj.user
+.DS_Store
 .Rhistory
 .RData
-.Ruserdata
-_old
-output
-papers
-Psydata.scriv
-20\ Psydata.Rproj
-scribble.R
-copy_table.R
-2019-01-23\ analysis*
-*_cache
-*_files
+.Rproj.user
