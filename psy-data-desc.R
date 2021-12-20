@@ -21,6 +21,8 @@ data.labels <- foreign::read.spss(filename) %>%
   attributes %>%
   .$variable.labels %T>% print
 
+# data.labels %>% saveRDS("data/data.labels.rds")
+
 file.raw %<>%
   dplyr::select(-id, -TESTDATE) %>%
   tbl_df
